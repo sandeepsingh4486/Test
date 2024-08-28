@@ -1,0 +1,7 @@
+https://github.com/WelsTheory/PIC18F4550-TUTORIAL.git
+
+https://github.com/Vel11leV/Timer_PIC18.git
+
+https://github.com/richMetellus/PIC18_TimerInterruptsApp.git
+
+https://github.com/hayview/timer0---pic18f.git

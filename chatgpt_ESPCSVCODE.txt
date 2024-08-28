@@ -1,0 +1,264 @@
+Your code for the ESP32 microcontroller appears to manage various tasks related to Bluetooth communication, Wi-Fi configuration, and file handling through a web server interface. Here’s a breakdown of the key components and functionalities:
+
+### Key Components and Functionalities
+
+1. **Bluetooth Communication:**
+   - `SerialBT` is used for Bluetooth Serial communication.
+   - The `callback` function handles events when a Bluetooth connection is opened or closed.
+   - The `Receive_Bluetooth_Data` function reads data from the Bluetooth serial interface and stores it in `bBuffer`.
+   - `Handle_Bluetooth_Frame` processes commands received via Bluetooth and performs actions like factory reset, system configuration, and file handling.
+
+2. **Wi-Fi and Web Server Setup:**
+   - `Init_Wireless` initializes Wi-Fi connections based on configuration settings and sets up a web server for file upload and OTA updates.
+   - `handleRoot` provides an HTML page for file upload.
+
+3. **Factory Settings and EEPROM:**
+   - `Factory_Reset` resets the system parameters to default values.
+   - `Read_System_Para` reads and prints system parameters from EEPROM.
+
+4. **File Handling:**
+   - `Find_Total_Tables` reads a file from the filesystem and counts tables based on a specific format.
+   - File handling through LITTLEFS (Little Flash File System) includes checking file paths and managing file uploads.
+
+5. **Initialization and Loop:**
+   - `setup` initializes serial communication, Bluetooth, and Wi-Fi. It also sets up EEPROM and the file system.
+   - `loop` handles Bluetooth data, processes commands, and manages file transfer.
+
+### Detailed Code Explanation
+
+#### Factory Reset and System Parameters
+
+The `Factory_Reset` function writes default settings to EEPROM and initializes settings like Wi-Fi SSID and password.
+
+```cpp
+void Factory_Reset()
+{
+  Write_Byte_EEPROM(FACTORY_RESET_LOCATION, 'R');
+  wf_network_sel = 0;
+  Write_Byte_EEPROM(WIFI_NETWORK_SELECT, wf_network_sel);
+  sprintf(factory.set.ota_wf_ssid,"KAMPL_2021");
+  sprintf(factory.set.ota_wf_pw,"KAMPL_2021");
+  factory.set.baud = 38400;
+  Write_Array_EEPROM(FACTORY_SETTING_LOCATION,factory.buf,sizeof(factory.buf));
+  memset(fpath,0,sizeof(fpath));
+  Write_Array_EEPROM(FILEPATH_LOCATION,(uint8_t *)fpath,sizeof(fpath));
+  EEPROM_Commit();
+  Serial.println("Factory reset!");
+}
+```
+
+#### Handling Bluetooth Data
+
+The `Receive_Bluetooth_Data` function reads incoming Bluetooth data and sets a flag when a complete line is received.
+
+```cpp
+void Receive_Bluetooth_Data()
+{
+  uint8_t inChar;
+  while (SerialBT.available())
+  {
+    inChar = SerialBT.read();
+    if (inChar != '\n')
+    {
+      bBuffer[bindx] = (char)inChar;
+      bindx++;
+    }
+    else
+    {
+      bBuffer[bindx] = (char)inChar;
+      bindx = 0;
+      bfready_bit = 1;
+      SerialBT.flush();
+    }
+  }
+}
+```
+
+#### Processing Commands
+
+The `Handle_Bluetooth_Frame` function processes different Bluetooth commands such as setting factory settings, network selection, and file transfer.
+
+```cpp
+void Handle_Bluetooth_Frame()
+{
+  char *i, *token, stat, rec_ack=0;
+  uint8_t lbuf[258];
+  char output[1000];
+  char output1[1000];
+  uint16_t l;
+  uint32_t baud;
+
+  if(bfready_bit)
+  {    
+    DynamicJsonDocument doc(4096);
+    DeserializationError error = deserializeJson(doc, bBuffer);
+    if(error)
+    {
+      bfready_bit = 0;
+      return;
+    }
+
+    const char *COMMAND = doc["COMMAND"];
+    switch(COMMAND[0])
+    {
+      case TOTAL:
+        if (COMMAND[1] == PAGES)
+        {
+          tpages = (uint16_t)atoi(doc["COUNT"]);
+          baud = atoi(doc["BAUDRATE"]);
+          StaticJsonDocument<60> out_doc;
+          out_doc["COMMAND"] = "TP";
+          if(((baud == 9600)||(baud == 38400))&&(tpages > 0)&&(wf_ota_stat_bit == 0))
+          {
+            Serial.begin(baud);
+            delay(100);
+            out_doc["REQUEST_STATUS"] = "OK";
+            Serial.write('$');
+            Serial.write(tpages/256);
+            Serial.write(tpages%256);
+            Serial.write('#');
+            rec_ack = 0;
+            while(rec_ack != 0x06)
+            {
+              rec_ack = Serial.read();
+            }
+          }
+          else
+          {
+            out_doc["REQUEST_STATUS"] = "FAIL";
+          }
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        else if (COMMAND[1] == COUNT)
+        {
+          const char *P_DATA = doc["PAGE_DATA"];
+          page_no = (uint16_t)atoi(doc["PAGE_NO"]);
+          stat = PageString_To_Array((char *)P_DATA, lbuf);
+          StaticJsonDocument<60> out_doc;
+          out_doc["COMMAND"] = "TC";
+          sprintf(gbuf,"%d",page_no);
+          out_doc["PAGE_NO"] = gbuf;
+          if((page_no > 0)&&(page_no <= tpages)&&(stat == 0)&&(wf_ota_stat_bit == 0))
+          {
+            out_doc["REQUEST_STATUS"] = "OK";
+            for(l=0; l<258; l++)
+            {
+              Serial.write(lbuf[l]);
+            }
+            while(rec_ack != 0x06)
+            {
+              rec_ack = Serial.read();
+            }
+            if(page_no == tpages)
+            {
+              Serial.write(0x03);
+            }
+          }
+          else
+          {
+            out_doc["REQUEST_STATUS"] = "FAIL";
+          }
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        break;
+      case FSET:
+        if (COMMAND[1] == SETVAL)
+        {
+          sprintf((char*)factory.set.ota_wf_ssid, doc["OTA_SSID"]);
+          sprintf((char*)factory.set.ota_wf_pw, doc["OTA_PSWD"]);
+          factory.set.baud = atoi(doc["BAUDRATE"]);
+          Write_Array_EEPROM(FACTORY_SETTING_LOCATION, factory.buf, sizeof(factory.buf));
+          EEPROM_Commit();
+          kopsUart.end();
+          delay(100);
+          kopsUart.begin(factory.set.baud, SWSERIAL_8N1, 16, 17, false);
+          StaticJsonDocument<60> out_doc;
+          out_doc["COMMAND"] = "SS";
+          out_doc["REQUEST_STATUS"] = "OK";
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        else if (COMMAND[1] == KNOWIP)
+        {
+          StaticJsonDocument<120> out_doc;
+          out_doc["COMMAND"] = "SK";
+          if(wf_ota_stat_bit == 1)
+          {
+            sprintf(gbuf,"%s",ota_ip);
+            out_doc["SERVER_IP"] = gbuf;
+            out_doc["REQUEST_STATUS"] = "OK";
+          }
+          else
+          {
+            out_doc["REQUEST_STATUS"] = "FAIL";
+          }            
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        else if (COMMAND[1] == WF_NETWORK_SELECT)
+        {
+          wf_network_sel = doc["SEL_WIFI"];
+          Write_Byte_EEPROM(WIFI_NETWORK_SELECT, wf_network_sel);
+          EEPROM_Commit();
+          StaticJsonDocument<60> out_doc;
+          out_doc["COMMAND"] = "SW";
+          out_doc["REQUEST_STATUS"] = "OK";
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+          delay(1000);
+          if (wf_network_sel > 0)
+          {
+            ets_printf("reboot\n");
+            esp_restart();
+          }
+        }
+        else if (COMMAND[1] == FACT_RESET)
+        {
+          Factory_Reset();
+          delay(100);
+          Read_System_Para();
+          StaticJsonDocument<60> out_doc;
+          out_doc["COMMAND"] = "SR";
+          out_doc["REQUEST_STATUS"] = "OK";
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        else if (COMMAND[1] == ALL_SYS_SET)
+        {
+          StaticJsonDocument<256> out_doc;
+          out_doc["COMMAND"] = "SA";
+          sprintf(gbuf,"%s",factory.set.ota_wf_ssid);
+          out_doc["OTA_SSID"] = gbuf;
+          sprintf(gbuf,"%s",factory.set.ota_wf_pw);
+          out_doc["OTA_PSWD"] = gbuf;
+          sprintf(gbuf,"%u",factory.set.baud);
+          out_doc["BAUDRATE"] = gbuf;
+          out_doc["REQUEST_STATUS"] = "OK";
+          serializeJson(out_doc, output);
+          SerialBT.println(output);
+        }
+        break;
+    }
+    doc.clear();
+    memset(bBuffer,0,sizeof(bBuffer));
+    bfready_bit = 0;
+  }
+}
+```
+
+#### File Handling and Web Server
+
+- `Find_Total_Tables` analyzes the content of the uploaded file to count the number of tables.
+- `Init_Wireless` sets up Wi-Fi and the web server for handling file uploads and OTA updates.
+
+```cpp
+void Init_Wireless()
+{
+  char blink_flag = 0;
+  
+  if(wf_network_sel == 1)
+  {
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(factory.set.ota_wf_ssid, factory.set.ota_wf_pw
