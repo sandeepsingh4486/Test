@@ -1,0 +1,24 @@
+Remote file access
+
+https://www.microchip.com/en-us/development-tool/sw100300
+https://www.techtarget.com/searchenterprisedesktop/definition/Network-File-System
+https://forum.microchip.com/s/topic/a5C3l000000MeY6EAK/t385925
+
+The tools for simulation which we can use 
+
+1.Proteus
+2.https://www.circuit-diagram.org/editor/ : Simple Circuit Simulation
+3. https://everycircuit.com/ : Analog and digital Circuit Simulation
+4. https://www.visuino.com/: For Arduino based simulation
+5. Multisim
+6. Pspice
+
+
+https://dotmatrixtool.com/#
+https://gurgleapps.com/tools/matrix
+https://forum.microchip.com/s/topic/a5C3l000000MdmiEAC/t382987
+https://github.com/Microchip-MPLAB-Harmony/wireless_apps_pic32mzw1_wfi32e01/tree/master/apps/wifi_ota_app_upgrade
+https://microchip.my.site.com/s/article/How-to-upgrade-the-firmware-using-OTA-application-and-supported-firmware-releases
+https://forum.microchip.com/s/topic/a5C3l000000MVN5EAO/t350651
+https://www.eevblog.com/forum/microcontrollers/application-code-update-on-pic-using-boot-loaders-(uart-or-usb)/
+https://onlinedocs.microchip.com/oxy/GUID-742B1A75-BF5F-43A6-AD92-42EFEFCF6E25-en-US-4/GUID-7EF4113C-BB31-47A2-96E8-2965EC312340.html

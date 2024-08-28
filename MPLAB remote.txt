@@ -1,0 +1,4 @@
+https://www.youtube.com/watch?v=Rx2EcXJscSU
+https://stackoverflow.com/questions/10674297/use-external-header-files-in-mplab-x-ide
+https://forum.microchip.com/s/topic/a5C3l000000MOEhEAO/t323223
+https://developerhelp.microchip.com/xwiki/bin/view/software-tools/c-programming/include-directive/
