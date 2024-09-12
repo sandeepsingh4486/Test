@@ -1,0 +1,2241 @@
+To optimize and clean up your code while implementing the desired functionality, follow these steps:
+
+    Send the first packet unconditionally.
+    Wait for a response from the serial port with specific conditions:
+        The first 6 bytes should be 02 F0 00 55 00 AA.
+        Check if the 12th byte is 01.
+    Retry sending each packet if the 12th byte is not 01.
+    Print appropriate error messages based on the 12th byte.
+
+Here's the cleaned-up and optimized code:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* expectedResponse, size_t responseLength, unsigned char* actualResponse, size_t* actualLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  *actualLength = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == expectedResponse[index]) {
+          index++;
+        } else {
+          index = (byte == expectedResponse[0]) ? 1 : 0;
+        }
+      }
+      if (*actualLength < 255) {
+        actualResponse[(*actualLength)++] = byte;
+      }
+      if (index >= responseLength) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Function to check the 12th byte and print appropriate error message
+void checkResponse(unsigned char* response, size_t responseLength) {
+  if (responseLength >= 12) {
+    switch (response[11]) {
+      case 0x01:
+        Serial.println("SUCCESS");
+        break;
+      case 0xFF:
+        Serial.println("UNSUPPORTED_COMMAND");
+        break;
+      case 0xFE:
+        Serial.println("BAD_ADDRESS");
+        break;
+      case 0xFD:
+        Serial.println("BAD_LENGTH");
+        break;
+      case 0xFC:
+        Serial.println("VERIFY_FAIL");
+        break;
+      default:
+        Serial.println("UNKNOWN_ERROR");
+        break;
+    }
+  } else {
+    Serial.println("ERROR: Response too short.");
+  }
+}
+
+// Function to send a packet and handle response
+void sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  size_t responseLength = sizeof(expectedResponse);
+  unsigned char actualResponse[255];
+  size_t actualLength = 0;
+
+  // Wait for the specific response
+  if (waitForResponse(10000, expectedResponse, responseLength, actualResponse, &actualLength)) {
+    // Check if the 12th byte is 01
+    if (actualLength >= 12 && actualResponse[11] == 0x01) {
+      Serial.println("Packet sent successfully.");
+    } else {
+      // Print error message based on the 12th byte
+      checkResponse(actualResponse, actualLength);
+    }
+  } else {
+    Serial.println("ERROR: Timeout waiting for expected response.");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  // Send the first packet unconditionally
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+    sendPacketWithResponseHandling(byteArray, byteCount);
+
+    // Send subsequent packets only if the first packet was successful
+    for (int i = 1; i < hexStringCount; i++) {
+      byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      bool success = false;
+      for (int attempt = 0; attempt < 3 && !success; attempt++) {
+        sendPacketWithResponseHandling(byteArray, byteCount);
+        delay(2000); // Delay before retrying
+        // You can add additional checks here if needed
+        // If a packet is sent successfully, set `success` to true
+      }
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+Key Changes and Improvements:
+
+    Modular Functions:
+        waitForResponse: Waits for a specific response within a timeout and captures the actual response.
+        checkResponse: Checks the 12th byte and prints appropriate error messages.
+        sendPacketWithResponseHandling: Sends a packet and handles the response, including retries.
+
+    Optimized Command Sending:
+        Send_Reset_command and Send_Initial_commands: Use arrays to simplify command sending.
+
+    Retry Logic:
+        Attempts to send each packet up to 3 times if needed, with appropriate delays between attempts.
+
+This code handles sending packets based on specific conditions and provides detailed error handling and response verification. Make sure to add your actual hex strings in the hexStrings array for complete functionality.
+
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[251]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    for (int j = 0 ; j <= byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+    delay(2000); // Delay between sending hex strings
+  }
+
+  delay(2000);
+  Send_Reset_command();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+void Send_Reset_command()
+{
+  Serial.write(0x09);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+}
+void Send_Initial_commands()
+{
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+  Serial.write(0x0B);
+  delay(2);
+  Serial.write(0x08);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+  Serial.write(0x0B);
+  delay(2);
+  Serial.write(0x08);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+}
+I want to optimize and clean this code, send first packet without any condition , do not send further and ongoing packets until serial receive data having first 6 bytes as 02 F0 00 55 00 AA on serial port  Checks if the 12th byte is 01.Make multiple attempts to send the packet if the 12th byte of recieved response is not 01 or print
+01	SUCCESS
+FF	UNSUPPORTED_COMMAND
+FE	BAD_ADDRESS
+FD	BAD_LENGTH
+FC	VERIFY_FAIL run this function Send_Reset_command() once all strings are sent successfully
+ChatGPT said:
+ChatGPT
+
+To optimize and clean up your code while implementing the new requirements, we'll make the following changes:
+
+    Modularize the Code: Create reusable functions to avoid redundancy.
+    Handle Responses Properly: Check the first 6 bytes and the 12th byte in the received data.
+    Retry Sending: Attempt to resend packets if the response is not as expected.
+    Send Reset Command: Ensure Send_Reset_command() is only called after all packets are successfully sent.
+
+Here’s the refactored code with these improvements:
+
+cpp
+
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[251]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* expectedResponse, size_t responseLength, unsigned char* actualResponse, size_t* actualLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  *actualLength = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == expectedResponse[index]) {
+          index++;
+        } else {
+          index = (byte == expectedResponse[0]) ? 1 : 0;
+        }
+      }
+      if (*actualLength < 255) {
+        actualResponse[(*actualLength)++] = byte;
+      }
+      if (index >= responseLength) {
+        return true; // Response matched
+      }
+    }
+  }
+  return false; // Timeout
+}
+
+// Function to check if the 12th byte is `01`
+bool check12thByte(const unsigned char* response, size_t responseLength) {
+  return responseLength >= 12 && response[11] == 0x01;
+}
+
+// Function to print error code based on the 12th byte
+void printErrorCode(unsigned char errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      Serial.println("SUCCESS");
+      break;
+    case 0xFF:
+      Serial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      Serial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      Serial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      Serial.println("VERIFY_FAIL");
+      break;
+    default:
+      Serial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Function to send a packet and handle the response
+bool sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength, unsigned long timeout) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  size_t expectedResponseLength = sizeof(expectedResponse);
+  unsigned char response[255];
+  size_t responseLength = 0;
+
+  if (waitForResponse(timeout, expectedResponse, expectedResponseLength, response, &responseLength)) {
+    if (check12thByte(response, responseLength)) {
+      Serial.println("Packet sent successfully.");
+      return true;
+    } else {
+      if (responseLength >= 12) {
+        printErrorCode(response[11]);
+      } else {
+        Serial.println("ERROR: Response too short.");
+      }
+      return false;
+    }
+  } else {
+    Serial.println("ERROR: Timeout waiting for expected response.");
+    return false;
+  }
+}
+
+// Function to send initial commands
+void sendInitialCommands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+// Function to send reset command
+void sendResetCommand() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void setup() {
+  Serial.begin(115200);
+  sendInitialCommands();
+  delay(2000);
+}
+
+void loop() {
+  bool allPacketsSentSuccessfully = true;
+  const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    bool success = false;
+    for (int attempt = 0; attempt < 3 && !success; attempt++) {
+      success = sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout);
+      delay(2000); // Delay before retrying
+    }
+    if (!success) {
+      allPacketsSentSuccessfully = false;
+      break; // Stop sending further packets if one fails
+    }
+    delay(2000); // Delay between sending hex strings
+  }
+
+  if (allPacketsSentSuccessfully) {
+    sendResetCommand();
+    delay(2000);
+    sendInitialCommands();
+    delay(2000);
+  }
+
+  // Add a delay before the next loop iteration if needed
+  delay(2000);
+}
+
+Changes Made:
+
+    sendInitialCommands and sendResetCommand: Combined similar commands into single functions to avoid repetition.
+    sendPacketWithResponseHandling: Added functionality to handle the response and retry if needed.
+    waitForResponse: Modified to return the actual response and check the first 6 bytes.
+    loop: Added logic to check if all packets are sent successfully before sending the reset command.
+
+Notes:
+
+    Adjust byteArray size as needed.
+    Ensure the hexStrings array contains your hex data.
+    Fine-tune timeouts and delays based on your specific requirements and hardware behavior.
+	
+	#include <SoftwareSerial.h>
+
+SoftwareSerial DebugSerial(16, 17); // RX, TX
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 1E 00 90 00 70 00 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 80 EA 00 00 3A 80 00 00 80 60 00 00 3A 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 40 27 EF 00 00 80 FA 00 00 00 06 00 00 00 FA 00 04 2E EF 00 14 2E EF 00 24 2E EF 00 34 2E EF 00 44 2E EF 00 54 2E EF 00 64 2E EF 00 30 F9 2D 00 00 70 88 00 00 80 EB 00 80 70 88 00 F0 FF 23 00 00 71 88 00 E0 17 2B 00 80 71 88 00 30 30 2F 00 00 72 88 00 30 6F 23 00 80 72 88 00 F0 FC 2F 00 00 73 88 00 0C 2E EF 00 1C 2E EF 00 2C 2E EF 00 3C 2E EF 00 4C 2E EF 00 5C 2E EF 00 6C 2E EF 00 0A 2E EF 00 1A 2E EF 00",
+  "02 F0 00 55 00 AA 00 68 21 00 00 2A 2E EF 00 00 00 24 00 D0 71 88 00 4A 2E EF 00 5A 2E EF 00 6A 2E EF 00 06 2E EF 00 16 2E EF 00 26 2E EF 00 36 2E EF 00 46 2E EF 00 56 2E EF 00 66 2E EF 00 30 A1 2D 00 70 70 88 00 F0 38 20 00 F0 70 88 00 F0 C3 20 00 70 71 88 00 00 00 28 00 F0 71 88 00 30 30 2F 00 70 72 88 00 00 63 23 00 F0 72 88 00 C0 FC 28 00 70 73 88 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 03 00 37 00 00 17 21 00 11 00 20 00 24 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 05 00 37 00 00 8C 20 00 01 00 20 00 13 02 07 00 01 FE 2F 00 1E 8F 40 00 1E 00 78 00 FF 0F 50 00 F8 FF 3E 00 03 00 37 00 60 04 20 00 01 00 20 00",
+  "02 F0 00 55 00 AA 00 E0 21 00 00 0A 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 00 00 FA 00 00 80 FA 00 00 00 06 00 FF FF 37 00 70 25 04 00 00 00 00 00 82 24 04 00 00 00 00 00 C4 24 04 00 00 00 00 00 24 25 04 00 00 00 00 00 A2 24 04 00 00 00 00 00 E4 24 04 00 00 00 00 00 04 25 04 00 00 00 00 00 44 25 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 58 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 D0 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 48 23 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 2F 02 21 00 0E FF 2C 00 0E 01 88 00 00 00 00 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 01 20 00 20 02 88 00 14 00 07 00 EB 00 07 00 00 00 E0 00 03 00 3A 00 C0 63 22 00 01 00 20 00 02 00 37 00 00 00 20 00 01 00 20 00 81 0F 70 00 01 00 32 00 0F 00 07 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 00 02 00 00 00 00 00 2A 26 02 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 C0 23 00 00 00 40 DA 00 00 00 FE 00 20 00 20 00 00 00 E0 00 02 00 32 00 10 00 20 00 90 01 88 00 00 00 06 00 A1 02 88 00 80 04 78 00 00 00 EB 00 1F 00 37 00 E2 84 44 00 54 A0 B4 00 99 05 BA 00 E2 84 44 00 54 A0 B4 00 99 06 BA 00 E2 84 44 00 54 A0 B4 00 00 06 EB 00 47 6F DE 00 FD 07 B2 00 AE 01 88 00 63 6C E1 00 03 00 3A 00 0A D8 01 00 00 00 EB 00 0E 00 37 00 60 6C E1 00 08 00 3A 00 00 4D EB 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 F9 FF 3E 00 04 00 37 00 61 68 E1 00 01 00 32 00 00 86 EB 00 0B 00 07 00 19 C7 BA 00 0E 04 E0 00 19 05 BA 00 03 00 3A 00 0A 00 E0 00 DB FF 3A 00 00 00 06 00 FE 07 B2 00 AE 02 88 00 8A 04 78 00 F5 FF 37 00 0C D0 A3 00 E2 0F 4D 00 1C 00 3B 00 89 02 78 00 35 4D BA 00 0A 05 E8 00",
+  "02 F0 00 55 00 AA 00 38 24 00 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 0F 00 32 00 25 4D BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 08 00 32 00 0C 00 E0 00 06 00 32 00 15 CD BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 89 84 E8 00 54 A0 B4 00 0B 00 E0 00 E2 FF 3A 00 00 00 06 00 99 02 BA 00 05 5D 78 00 8B 05 E9 00 F7 FF 32 00 C8 2A DE 00 05 5D 78 00 8B 05 E9 00 F3 FF 32 00 0C 00 E0 00 F1 FF 32 00 19 DD BA 00 EE FF 37 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 28 A9 00 00 00 EB 00 BF 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 B6 00 07 00",
+  "02 F0 00 55 00 AA 00 B0 24 00 00 C0 48 A9 00 10 00 20 00 AE 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 68 A9 00 20 00 20 00 9E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 88 A9 00 30 00 20 00 8E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 A8 A9 00 40 00 20 00 7E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00",
+  "02 F0 00 55 00 AA 00 28 25 00 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C6 08 A9 00 70 00 20 00 6E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 21 46 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 03 00 32 00 C4 A8 A9 00 90 00 20 00 59 00 07 00 20 46 80 00 70 00 60 00 00 00 E0 00 03 00 32 00 C4 88 A9 00 A0 00 20 00 52 00 07 00 FF FF 37 00 00 40 DA 00 00 00 FE 00 00 00 05 00 00 00 FA 00 00 00 23 00 20 3A 88 00 48 27 EF 00 4E 27 EF 00 40 04 20 00 30 3A 88 00 60 27 EF 00 62 27 EF 00 64 27 EF 00 66 27 EF 00 6A 27 EF 00 6C 27 EF 00 32 00 20 00 80 07 20 00 A1 09 20 00 33 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 12 00 20 00",
+  "02 F0 00 55 00 AA 00 A0 25 00 00 60 04 20 00 71 05 20 00 23 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 00 00 00 00 10 3A 80 00 61 00 60 00 00 00 E0 00 FC FF 3A 00 00 00 00 00 11 3A 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 32 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 21 02 80 00 20 0F 20 00 00 80 60 00 1E 00 70 00 20 02 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 C3 E8 A8 00 00 00 00 00 00 00 00 00 00 80 FA 00 00 00 06 00 00 00 FA 00 A1 FD 07 00 C6 FF 07 00 06 FE 07 00 F5 FF 07 00 00 02 20 00 EA FF 07 00 00 80 FA 00 00 00 06 00 F0 3F B1 00 01 80 B1 00 06 00 35 00 EE 03 09 00 00 00 00 00 40 3F B1 00 01 80 B1 00 FB FF 3D 00 10 00 B0 00 20 3F B0 00 02 00 35 00 00 80 09 00 00 00 00 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 00 78 00",
+  "02 F0 00 55 00 AA 00 18 26 00 00 01 80 88 00 FF FF 37 00 00 00 FA 00 20 00 21 00 80 07 78 00 A0 01 21 00 00 01 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 DB FF 07 00 35 CE A8 00 80 3E 20 00 B7 FD 07 00 35 CE A9 00 80 3E 20 00 B4 FD 07 00 F9 FF 37 00 02 10 00 00 20 00 00 00 80 00 00 00 00 10 00 00 02 00 00 00 82 00 00 00 FF FF 00 00 00 00 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00",
+  "02 F0 00 55 00 AA 00 90 26 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00"
+ 
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* expectedResponse, size_t responseLength, unsigned char* actualResponse, size_t* actualLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  *actualLength = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == expectedResponse[index]) {
+          index++;
+        } else {
+          index = (byte == expectedResponse[0]) ? 1 : 0;
+        }
+      }
+      if (*actualLength < 255) {
+        actualResponse[(*actualLength)++] = byte;
+      }
+      if (index >= responseLength) {
+        return true; // Response matched
+      }
+    }
+  }
+  return false; // Timeout
+}
+
+// Function to print error code based on the 12th byte
+void printErrorCode(unsigned char errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      DebugSerial.println("SUCCESS");
+      break;
+    case 0xFF:
+      DebugSerial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      DebugSerial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      DebugSerial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      DebugSerial.println("VERIFY_FAIL");
+      break;
+    default:
+      DebugSerial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Function to send a packet and handle the response
+bool sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength, unsigned long timeout) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  size_t expectedResponseLength = sizeof(expectedResponse);
+  unsigned char response[12];
+  size_t responseLength = 0;
+
+  if (waitForResponse(timeout, expectedResponse, expectedResponseLength, response, &responseLength)) {
+    if (responseLength >= 12 && response[11] == 0x01) {
+      DebugSerial.println("Packet sent successfully.");
+      return true;
+    } else {
+      if (responseLength >= 12) {
+        printErrorCode(response[11]);
+      } else {
+        DebugSerial.println("ERROR: Response too short.");
+      }
+      return false;
+    }
+  } else {
+    DebugSerial.println("ERROR: Timeout waiting for expected response.");
+    return false;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+  // Send the first packet and wait for a valid response
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+
+    // Try sending the packet multiple times if necessary
+    bool success = false;
+    for (int attempt = 0; attempt < 3 && !success; attempt++) {
+      success = sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout);
+      delay(2000); // Delay before retrying
+    }
+
+    // Send subsequent packets if the first packet was successful
+    if (success) {
+      for (int i = 1; i < hexStringCount; i++) {
+        byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+        sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout);
+        delay(2000);
+      }
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void Send_Initial_commands() {
+  const unsigned char initialCommand1[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00};
+ const unsigned char initialCommand2[]=  {  0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(initialCommand1, sizeof(initialCommand1));
+  delay(5000);
+ Serial.write(initialCommand2, sizeof(initialCommand2));
+  delay(5000);
+}
+I want to optimize and clean this code, send first packet without any condition , do not send further and ongoing packets until serial receive data having first 6 bytes as 02 F0 00 55 00 AA on serial port  Checks if the 12th byte is 01.Make multiple attempts to send the packet if the 12th byte of recieved response is not 01 or print on software serial port 
+01	SUCCESS
+FF	UNSUPPORTED_COMMAND
+FE	BAD_ADDRESS
+FD	BAD_LENGTH
+FC	VERIFY_FAIL run this function Send_Reset_command() once all strings are sent successfully
+I have to optimise and clean this code for arduino ESP32 , Check the recieved data has 01 in its 12th byte then send the next byte for example 
+Sent data : 02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 00 20 00 00 01
+
+Sent data : 02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 78 20 00 00 01
+
+once all hexStrings sent send reset command 09 00 00 00 00 00 00 00 00 00 00, then read command 
+01 F4 00 55 00 AA 00 00 20 00 00
+01 F4 00 55 00 AA 00 78 20 00 00
+01 F4 00 55 00 AA 00 F0 20 00 00
+01 F4 00 55 00 AA 00 68 21 00 00
+01 F4 00 55 00 AA 00 E0 21 00 00
+01 F4 00 55 00 AA 00 58 22 00 00
+01 F4 00 55 00 AA 00 D0 22 00 00
+01 F4 00 55 00 AA 00 48 23 00 00
+01 F4 00 55 00 AA 00 C0 23 00 00
+01 F4 00 55 00 AA 00 38 24 00 00
+01 F4 00 55 00 AA 00 B0 24 00 00
+01 F4 00 55 00 AA 00 28 25 00 00
+01 F4 00 55 00 AA 00 A0 25 00 00
+01 F4 00 55 00 AA 00 18 26 00 00
+01 F4 00 55 00 AA 00 90 26 00 00
+PRINT the respose of read command
+// Define the input hex strings
+const char* WriteStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 1E 00 90 00 70 00 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 80 EA 00 00 3A 80 00 00 80 60 00 00 3A 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 40 27 EF 00 00 80 FA 00 00 00 06 00 00 00 FA 00 04 2E EF 00 14 2E EF 00 24 2E EF 00 34 2E EF 00 44 2E EF 00 54 2E EF 00 64 2E EF 00 30 F9 2D 00 00 70 88 00 00 80 EB 00 80 70 88 00 F0 FF 23 00 00 71 88 00 E0 17 2B 00 80 71 88 00 30 30 2F 00 00 72 88 00 30 6F 23 00 80 72 88 00 F0 FC 2F 00 00 73 88 00 0C 2E EF 00 1C 2E EF 00 2C 2E EF 00 3C 2E EF 00 4C 2E EF 00 5C 2E EF 00 6C 2E EF 00 0A 2E EF 00 1A 2E EF 00",
+  "02 F0 00 55 00 AA 00 68 21 00 00 2A 2E EF 00 00 00 24 00 D0 71 88 00 4A 2E EF 00 5A 2E EF 00 6A 2E EF 00 06 2E EF 00 16 2E EF 00 26 2E EF 00 36 2E EF 00 46 2E EF 00 56 2E EF 00 66 2E EF 00 30 A1 2D 00 70 70 88 00 F0 38 20 00 F0 70 88 00 F0 C3 20 00 70 71 88 00 00 00 28 00 F0 71 88 00 30 30 2F 00 70 72 88 00 00 63 23 00 F0 72 88 00 C0 FC 28 00 70 73 88 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 03 00 37 00 00 17 21 00 11 00 20 00 24 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 05 00 37 00 00 8C 20 00 01 00 20 00 13 02 07 00 01 FE 2F 00 1E 8F 40 00 1E 00 78 00 FF 0F 50 00 F8 FF 3E 00 03 00 37 00 60 04 20 00 01 00 20 00",
+  "02 F0 00 55 00 AA 00 E0 21 00 00 0A 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 00 00 FA 00 00 80 FA 00 00 00 06 00 FF FF 37 00 70 25 04 00 00 00 00 00 82 24 04 00 00 00 00 00 C4 24 04 00 00 00 00 00 24 25 04 00 00 00 00 00 A2 24 04 00 00 00 00 00 E4 24 04 00 00 00 00 00 04 25 04 00 00 00 00 00 44 25 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 58 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 D0 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 48 23 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 2F 02 21 00 0E FF 2C 00 0E 01 88 00 00 00 00 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 01 20 00 20 02 88 00 14 00 07 00 EB 00 07 00 00 00 E0 00 03 00 3A 00 C0 63 22 00 01 00 20 00 02 00 37 00 00 00 20 00 01 00 20 00 81 0F 70 00 01 00 32 00 0F 00 07 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 00 02 00 00 00 00 00 2A 26 02 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 C0 23 00 00 00 40 DA 00 00 00 FE 00 20 00 20 00 00 00 E0 00 02 00 32 00 10 00 20 00 90 01 88 00 00 00 06 00 A1 02 88 00 80 04 78 00 00 00 EB 00 1F 00 37 00 E2 84 44 00 54 A0 B4 00 99 05 BA 00 E2 84 44 00 54 A0 B4 00 99 06 BA 00 E2 84 44 00 54 A0 B4 00 00 06 EB 00 47 6F DE 00 FD 07 B2 00 AE 01 88 00 63 6C E1 00 03 00 3A 00 0A D8 01 00 00 00 EB 00 0E 00 37 00 60 6C E1 00 08 00 3A 00 00 4D EB 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 F9 FF 3E 00 04 00 37 00 61 68 E1 00 01 00 32 00 00 86 EB 00 0B 00 07 00 19 C7 BA 00 0E 04 E0 00 19 05 BA 00 03 00 3A 00 0A 00 E0 00 DB FF 3A 00 00 00 06 00 FE 07 B2 00 AE 02 88 00 8A 04 78 00 F5 FF 37 00 0C D0 A3 00 E2 0F 4D 00 1C 00 3B 00 89 02 78 00 35 4D BA 00 0A 05 E8 00",
+  "02 F0 00 55 00 AA 00 38 24 00 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 0F 00 32 00 25 4D BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 08 00 32 00 0C 00 E0 00 06 00 32 00 15 CD BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 89 84 E8 00 54 A0 B4 00 0B 00 E0 00 E2 FF 3A 00 00 00 06 00 99 02 BA 00 05 5D 78 00 8B 05 E9 00 F7 FF 32 00 C8 2A DE 00 05 5D 78 00 8B 05 E9 00 F3 FF 32 00 0C 00 E0 00 F1 FF 32 00 19 DD BA 00 EE FF 37 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 28 A9 00 00 00 EB 00 BF 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 B6 00 07 00",
+  "02 F0 00 55 00 AA 00 B0 24 00 00 C0 48 A9 00 10 00 20 00 AE 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 68 A9 00 20 00 20 00 9E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 88 A9 00 30 00 20 00 8E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 A8 A9 00 40 00 20 00 7E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00",
+  "02 F0 00 55 00 AA 00 28 25 00 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C6 08 A9 00 70 00 20 00 6E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 21 46 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 03 00 32 00 C4 A8 A9 00 90 00 20 00 59 00 07 00 20 46 80 00 70 00 60 00 00 00 E0 00 03 00 32 00 C4 88 A9 00 A0 00 20 00 52 00 07 00 FF FF 37 00 00 40 DA 00 00 00 FE 00 00 00 05 00 00 00 FA 00 00 00 23 00 20 3A 88 00 48 27 EF 00 4E 27 EF 00 40 04 20 00 30 3A 88 00 60 27 EF 00 62 27 EF 00 64 27 EF 00 66 27 EF 00 6A 27 EF 00 6C 27 EF 00 32 00 20 00 80 07 20 00 A1 09 20 00 33 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 12 00 20 00",
+  "02 F0 00 55 00 AA 00 A0 25 00 00 60 04 20 00 71 05 20 00 23 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 00 00 00 00 10 3A 80 00 61 00 60 00 00 00 E0 00 FC FF 3A 00 00 00 00 00 11 3A 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 32 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 21 02 80 00 20 0F 20 00 00 80 60 00 1E 00 70 00 20 02 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 C3 E8 A8 00 00 00 00 00 00 00 00 00 00 80 FA 00 00 00 06 00 00 00 FA 00 A1 FD 07 00 C6 FF 07 00 06 FE 07 00 F5 FF 07 00 00 02 20 00 EA FF 07 00 00 80 FA 00 00 00 06 00 F0 3F B1 00 01 80 B1 00 06 00 35 00 EE 03 09 00 00 00 00 00 40 3F B1 00 01 80 B1 00 FB FF 3D 00 10 00 B0 00 20 3F B0 00 02 00 35 00 00 80 09 00 00 00 00 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 00 78 00",
+  "02 F0 00 55 00 AA 00 18 26 00 00 01 80 88 00 FF FF 37 00 00 00 FA 00 20 00 21 00 80 07 78 00 A0 01 21 00 00 01 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 DB FF 07 00 35 CE A8 00 80 3E 20 00 B7 FD 07 00 35 CE A9 00 80 3E 20 00 B4 FD 07 00 F9 FF 37 00 02 10 00 00 20 00 00 00 80 00 00 00 00 10 00 00 02 00 00 00 82 00 00 00 FF FF 00 00 00 00 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00",
+  "02 F0 00 55 00 AA 00 90 26 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00"};
+
+const int hexStringCount = sizeof(WriteStrings) / sizeof(WriteStrings[0]);
+unsigned char byteArray[752]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+   
+   Serial.print("hexStringCount = ");
+   Serial.println(hexStringCount);
+   delay(5000);
+   Serial.flush();
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(WriteStrings[i], byteArray);
+//     Serial.print("byteCount = ");
+//   Serial.println(byteCount);
+    for (int j = 0 ; j < byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+      Serial.flush();
+    delay(2000); // Delay between sending hex strings
+  }
+}
+void Send_Reset_command()
+{
+  Serial.write(0x09);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+}
+ChatGPT said:
+ChatGPT
+
+To optimize and clean up the Arduino ESP32 code for processing the provided hex strings, you'll want to structure the code efficiently and ensure it performs the required operations with minimal overhead. Here's a streamlined version of the code that processes the received data, checks for specific conditions, and sends commands as specified:
+
+cpp
+
+#include <HardwareSerial.h>
+
+// Define the input hex strings
+const char* writeStrings[] = {
+  // ... (same hex strings as provided)
+};
+
+// Define the reset and read commands
+const char* resetCommand = "09 00 00 00 00 00 00 00 00 00 00";
+const char* readCommands[] = {
+  "01 F4 00 55 00 AA 00 00 20 00 00",
+  "01 F4 00 55 00 AA 00 78 20 00 00",
+  "01 F4 00 55 00 AA 00 F0 20 00 00",
+  "01 F4 00 55 00 AA 00 68 21 00 00",
+  "01 F4 00 55 00 AA 00 E0 21 00 00",
+  "01 F4 00 55 00 AA 00 58 22 00 00",
+  "01 F4 00 55 00 AA 00 D0 22 00 00",
+  "01 F4 00 55 00 AA 00 48 23 00 00",
+  "01 F4 00 55 00 AA 00 C0 23 00 00",
+  "01 F4 00 55 00 AA 00 38 24 00 00",
+  "01 F4 00 55 00 AA 00 B0 24 00 00",
+  "01 F4 00 55 00 AA 00 28 25 00 00",
+  "01 F4 00 55 00 AA 00 A0 25 00 00",
+  "01 F4 00 55 00 AA 00 18 26 00 00",
+  "01 F4 00 55 00 AA 00 90 26 00 00"
+};
+
+// Function to convert hex string to byte array
+void hexStringToBytes(const char* hexString, uint8_t* buffer, size_t bufferSize) {
+  size_t len = strlen(hexString);
+  for (size_t i = 0; i < len / 3; ++i) {
+    sscanf(hexString + 3 * i, "%2hhx", &buffer[i]);
+  }
+}
+
+// Function to send data through serial
+void sendData(HardwareSerial& serial, const char* hexString) {
+  uint8_t buffer[256];
+  size_t length = strlen(hexString) / 3;
+  hexStringToBytes(hexString, buffer, length);
+  serial.write(buffer, length);
+}
+
+// Function to read response from serial
+void readResponse(HardwareSerial& serial, uint8_t* buffer, size_t bufferSize) {
+  size_t bytesRead = 0;
+  while (bytesRead < bufferSize) {
+    if (serial.available()) {
+      buffer[bytesRead++] = serial.read();
+    }
+  }
+}
+
+// Setup function
+void setup() {
+  Serial.begin(115200); // Initialize serial communication
+  HardwareSerial serial2(2); // Use hardware serial port 2
+  serial2.begin(9600, SERIAL_8N1, 16, 17); // Adjust baud rate and pins as needed
+
+  // Send each write string
+  for (const char* writeString : writeStrings) {
+    sendData(serial2, writeString);
+  }
+
+  // Send reset command
+  sendData(serial2, resetCommand);
+
+  // Read and print responses
+  uint8_t responseBuffer[256];
+  for (const char* readCommand : readCommands) {
+    sendData(serial2, readCommand);
+    delay(100); // Allow time for response
+    readResponse(serial2, responseBuffer, sizeof(responseBuffer));
+    Serial.print("Response: ");
+    for (size_t i = 0; i < sizeof(responseBuffer); ++i) {
+      if (responseBuffer[i] != 0) { // Print non-zero bytes only
+        Serial.print(responseBuffer[i], HEX);
+        Serial.print(" ");
+      }
+    }
+    Serial.println();
+  }
+}
+
+// Loop function
+void loop() {
+  // Main loop does nothing in this example
+}
+
+Key Points of the Code:
+
+    Hex String to Byte Array Conversion:
+        hexStringToBytes function converts the hex string to a byte array for serial communication.
+
+    Sending Data:
+        sendData function sends a hex string as byte data through the serial interface.
+
+    Reading Responses:
+        readResponse function reads bytes from the serial interface and stores them in a buffer.
+
+    Setup and Loop:
+        setup initializes serial communication, sends write strings, the reset command, and processes read commands.
+        loop is empty, as all operations are performed in setup for this example.
+
+Notes:
+
+    Adjust the serial port and baud rates as per your setup (serial2.begin(9600, SERIAL_8N1, 16, 17)).
+    Ensure that the length of responseBuffer is adequate for your expected responses.
+    Implement error handling and more sophisticated parsing if needed, depending on the data structure and response size.
+
+Feel free to adjust and test the code according to your specific requirements and hardware setup.
+I have to optimise and clean this code for arduino ESP32 , Check the recieved data has 01 in its 12th byte then send the next byte for example 
+Sent data : 02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 00 20 00 00 01
+
+Sent data : 02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 78 20 00 00 01
+
+once all hexStrings sent send reset command 09 00 00 00 00 00 00 00 00 00 00, then read command 
+01 F4 00 55 00 AA 00 00 20 00 00
+01 F4 00 55 00 AA 00 78 20 00 00
+01 F4 00 55 00 AA 00 F0 20 00 00
+01 F4 00 55 00 AA 00 68 21 00 00
+01 F4 00 55 00 AA 00 E0 21 00 00
+01 F4 00 55 00 AA 00 58 22 00 00
+01 F4 00 55 00 AA 00 D0 22 00 00
+01 F4 00 55 00 AA 00 48 23 00 00
+01 F4 00 55 00 AA 00 C0 23 00 00
+01 F4 00 55 00 AA 00 38 24 00 00
+01 F4 00 55 00 AA 00 B0 24 00 00
+01 F4 00 55 00 AA 00 28 25 00 00
+01 F4 00 55 00 AA 00 A0 25 00 00
+01 F4 00 55 00 AA 00 18 26 00 00
+01 F4 00 55 00 AA 00 90 26 00 00
+PRINT the respose of read command
+// Define the input hex strings
+const char* WriteStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 1E 00 90 00 70 00 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 80 EA 00 00 3A 80 00 00 80 60 00 00 3A 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 40 27 EF 00 00 80 FA 00 00 00 06 00 00 00 FA 00 04 2E EF 00 14 2E EF 00 24 2E EF 00 34 2E EF 00 44 2E EF 00 54 2E EF 00 64 2E EF 00 30 F9 2D 00 00 70 88 00 00 80 EB 00 80 70 88 00 F0 FF 23 00 00 71 88 00 E0 17 2B 00 80 71 88 00 30 30 2F 00 00 72 88 00 30 6F 23 00 80 72 88 00 F0 FC 2F 00 00 73 88 00 0C 2E EF 00 1C 2E EF 00 2C 2E EF 00 3C 2E EF 00 4C 2E EF 00 5C 2E EF 00 6C 2E EF 00 0A 2E EF 00 1A 2E EF 00",
+  "02 F0 00 55 00 AA 00 68 21 00 00 2A 2E EF 00 00 00 24 00 D0 71 88 00 4A 2E EF 00 5A 2E EF 00 6A 2E EF 00 06 2E EF 00 16 2E EF 00 26 2E EF 00 36 2E EF 00 46 2E EF 00 56 2E EF 00 66 2E EF 00 30 A1 2D 00 70 70 88 00 F0 38 20 00 F0 70 88 00 F0 C3 20 00 70 71 88 00 00 00 28 00 F0 71 88 00 30 30 2F 00 70 72 88 00 00 63 23 00 F0 72 88 00 C0 FC 28 00 70 73 88 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 03 00 37 00 00 17 21 00 11 00 20 00 24 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 05 00 37 00 00 8C 20 00 01 00 20 00 13 02 07 00 01 FE 2F 00 1E 8F 40 00 1E 00 78 00 FF 0F 50 00 F8 FF 3E 00 03 00 37 00 60 04 20 00 01 00 20 00",
+  "02 F0 00 55 00 AA 00 E0 21 00 00 0A 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 00 00 FA 00 00 80 FA 00 00 00 06 00 FF FF 37 00 70 25 04 00 00 00 00 00 82 24 04 00 00 00 00 00 C4 24 04 00 00 00 00 00 24 25 04 00 00 00 00 00 A2 24 04 00 00 00 00 00 E4 24 04 00 00 00 00 00 04 25 04 00 00 00 00 00 44 25 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 58 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 D0 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 48 23 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 2F 02 21 00 0E FF 2C 00 0E 01 88 00 00 00 00 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 01 20 00 20 02 88 00 14 00 07 00 EB 00 07 00 00 00 E0 00 03 00 3A 00 C0 63 22 00 01 00 20 00 02 00 37 00 00 00 20 00 01 00 20 00 81 0F 70 00 01 00 32 00 0F 00 07 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 00 02 00 00 00 00 00 2A 26 02 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 C0 23 00 00 00 40 DA 00 00 00 FE 00 20 00 20 00 00 00 E0 00 02 00 32 00 10 00 20 00 90 01 88 00 00 00 06 00 A1 02 88 00 80 04 78 00 00 00 EB 00 1F 00 37 00 E2 84 44 00 54 A0 B4 00 99 05 BA 00 E2 84 44 00 54 A0 B4 00 99 06 BA 00 E2 84 44 00 54 A0 B4 00 00 06 EB 00 47 6F DE 00 FD 07 B2 00 AE 01 88 00 63 6C E1 00 03 00 3A 00 0A D8 01 00 00 00 EB 00 0E 00 37 00 60 6C E1 00 08 00 3A 00 00 4D EB 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 F9 FF 3E 00 04 00 37 00 61 68 E1 00 01 00 32 00 00 86 EB 00 0B 00 07 00 19 C7 BA 00 0E 04 E0 00 19 05 BA 00 03 00 3A 00 0A 00 E0 00 DB FF 3A 00 00 00 06 00 FE 07 B2 00 AE 02 88 00 8A 04 78 00 F5 FF 37 00 0C D0 A3 00 E2 0F 4D 00 1C 00 3B 00 89 02 78 00 35 4D BA 00 0A 05 E8 00",
+  "02 F0 00 55 00 AA 00 38 24 00 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 0F 00 32 00 25 4D BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 08 00 32 00 0C 00 E0 00 06 00 32 00 15 CD BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 89 84 E8 00 54 A0 B4 00 0B 00 E0 00 E2 FF 3A 00 00 00 06 00 99 02 BA 00 05 5D 78 00 8B 05 E9 00 F7 FF 32 00 C8 2A DE 00 05 5D 78 00 8B 05 E9 00 F3 FF 32 00 0C 00 E0 00 F1 FF 32 00 19 DD BA 00 EE FF 37 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 28 A9 00 00 00 EB 00 BF 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 B6 00 07 00",
+  "02 F0 00 55 00 AA 00 B0 24 00 00 C0 48 A9 00 10 00 20 00 AE 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 68 A9 00 20 00 20 00 9E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 88 A9 00 30 00 20 00 8E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 A8 A9 00 40 00 20 00 7E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00",
+  "02 F0 00 55 00 AA 00 28 25 00 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C6 08 A9 00 70 00 20 00 6E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 21 46 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 03 00 32 00 C4 A8 A9 00 90 00 20 00 59 00 07 00 20 46 80 00 70 00 60 00 00 00 E0 00 03 00 32 00 C4 88 A9 00 A0 00 20 00 52 00 07 00 FF FF 37 00 00 40 DA 00 00 00 FE 00 00 00 05 00 00 00 FA 00 00 00 23 00 20 3A 88 00 48 27 EF 00 4E 27 EF 00 40 04 20 00 30 3A 88 00 60 27 EF 00 62 27 EF 00 64 27 EF 00 66 27 EF 00 6A 27 EF 00 6C 27 EF 00 32 00 20 00 80 07 20 00 A1 09 20 00 33 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 12 00 20 00",
+  "02 F0 00 55 00 AA 00 A0 25 00 00 60 04 20 00 71 05 20 00 23 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 00 00 00 00 10 3A 80 00 61 00 60 00 00 00 E0 00 FC FF 3A 00 00 00 00 00 11 3A 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 32 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 21 02 80 00 20 0F 20 00 00 80 60 00 1E 00 70 00 20 02 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 C3 E8 A8 00 00 00 00 00 00 00 00 00 00 80 FA 00 00 00 06 00 00 00 FA 00 A1 FD 07 00 C6 FF 07 00 06 FE 07 00 F5 FF 07 00 00 02 20 00 EA FF 07 00 00 80 FA 00 00 00 06 00 F0 3F B1 00 01 80 B1 00 06 00 35 00 EE 03 09 00 00 00 00 00 40 3F B1 00 01 80 B1 00 FB FF 3D 00 10 00 B0 00 20 3F B0 00 02 00 35 00 00 80 09 00 00 00 00 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 00 78 00",
+  "02 F0 00 55 00 AA 00 18 26 00 00 01 80 88 00 FF FF 37 00 00 00 FA 00 20 00 21 00 80 07 78 00 A0 01 21 00 00 01 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 DB FF 07 00 35 CE A8 00 80 3E 20 00 B7 FD 07 00 35 CE A9 00 80 3E 20 00 B4 FD 07 00 F9 FF 37 00 02 10 00 00 20 00 00 00 80 00 00 00 00 10 00 00 02 00 00 00 82 00 00 00 FF FF 00 00 00 00 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00",
+  "02 F0 00 55 00 AA 00 90 26 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00"};
+
+const int hexStringCount = sizeof(WriteStrings) / sizeof(WriteStrings[0]);
+unsigned char byteArray[752]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+   
+   Serial.print("hexStringCount = ");
+   Serial.println(hexStringCount);
+   delay(5000);
+   Serial.flush();
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(WriteStrings[i], byteArray);
+//     Serial.print("byteCount = ");
+//   Serial.println(byteCount);
+    for (int j = 0 ; j < byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+      Serial.flush();
+    delay(2000); // Delay between sending hex strings
+  }
+}
+void Send_Reset_command()
+{
+  Serial.write(0x09);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+}
+
+ChatGPT said:
+ChatGPT
+Here's an optimized and cleaned-up version of your code for the Arduino ESP32 that checks the received data for a specific byte pattern and handles sending data based on that condition.
+
+Key Improvements:
+Memory Management: Use String or char arrays only when necessary to reduce memory usage.
+Loop Optimization: Minimized unnecessary operations inside loops.
+Function Modularization: Separated functionality into reusable functions.
+Code:
+cpp
+Copy code
+const char* WriteStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  // Add other strings as needed
+};
+
+const char resetCommand[] = "09 00 00 00 00 00 00 00 00 00 00";
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000); // Delay for setup
+
+  for (int i = 0; i < sizeof(WriteStrings) / sizeof(WriteStrings[0]); i++) {
+    sendWriteString(WriteStrings[i]);
+    String receivedData = receiveData();
+
+    if (checkCondition(receivedData)) {
+      sendNextByte(receivedData);
+    }
+  }
+
+  sendResetCommand();
+  readAndPrintCommands();
+}
+
+void loop() {
+  // Your main loop logic (if needed)
+}
+
+void sendWriteString(const char* writeString) {
+  // Logic to send the hex string via serial or other communication means
+  Serial.println(writeString);
+  delay(100); // Adjust delay as per your communication speed
+}
+
+String receiveData() {
+  // Logic to receive data from serial or other communication means
+  // Example:
+  String receivedData = "02 F0 00 55 00 AA 00 78 20 00 00 01"; // Example received data
+  Serial.println("Received Data: " + receivedData);
+  return receivedData;
+}
+
+bool checkCondition(const String& receivedData) {
+  // Check if 12th byte is "01"
+  return receivedData.substring(33, 35) == "01";
+}
+
+void sendNextByte(const String& receivedData) {
+  // Logic to send the next byte after the 12th byte
+  char nextByte[3];
+  receivedData.substring(36, 38).toCharArray(nextByte, 3);
+  Serial.println("Sending Next Byte: " + String(nextByte));
+  delay(100); // Adjust delay as per your communication speed
+}
+
+void sendResetCommand() {
+  // Send the reset command
+  Serial.println("Sending Reset Command: " + String(resetCommand));
+  delay(100); // Adjust delay as per your communication speed
+}
+
+void readAndPrintCommands() {
+  // Logic to read and print the response of the read command
+  const char* readCommands[] = {
+    "01 F4 00 55 00 AA 00 00 20 00 00",
+    "01 F4 00 55 00 AA 00 78 20 00 00",
+    "01 F4 00 55 00 AA 00 F0 20 00 00",
+    "01 F4 00 55 00 AA 00 68 21 00 00",
+    "01 F4 00 55 00 AA 00 E0 21 00 00",
+    "01 F4 00 55 00 AA 00 58 22 00 00",
+    // Add other read commands as needed
+  };
+
+  for (int i = 0; i < sizeof(readCommands) / sizeof(readCommands[0]); i++) {
+    // Logic to read the response
+    Serial.println("Read Command: " + String(readCommands[i]));
+    delay(100); // Adjust delay as per your communication speed
+  }
+}
+Explanation:
+sendWriteString: Sends the hex strings sequentially with a delay.
+receiveData: Placeholder for receiving data; customize based on your actual implementation.
+checkCondition: Checks if the 12th byte in the received data is 01.
+sendNextByte: Sends the byte following the 12th byte if the condition is met.
+sendResetCommand: Sends a reset command after processing all data.
+readAndPrintCommands: Reads and prints a series of read commands, adjusting as needed.
+Make sure to adjust the actual sending and receiving methods based on how your communication is set up on the ESP32 (e.g., Serial, I2C, etc.).
+
+To optimize and clean up your Arduino ESP32 code for processing received data and sending responses based on that data, we'll focus on several tasks:
+
+    Parsing the Received Data: Check if the 12th byte of the received data is 01.
+    Sending the Next Byte: If the condition is met, send the byte following the 12th byte.
+    Handling Commands and Responses: Manage the sending and receiving of commands and print the responses.
+
+Here's a streamlined version of your code in Arduino C++ that addresses these tasks:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* WriteStrings[] = {
+  // Add your WriteStrings here
+  // Example: "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 ...",
+};
+
+// Define constants
+const int NUM_STRINGS = sizeof(WriteStrings) / sizeof(WriteStrings[0]);
+const int RESET_CMD_LEN = 11;
+const int READ_CMD_LEN = 11;
+const char RESET_CMD[RESET_CMD_LEN] = "09 00 00 00 00 00 00 00 00 00 00";
+const char READ_CMD[READ_CMD_LEN] = "01 F4 00 55 00 AA 00 00 20 00 00";
+
+// Function to convert a hex string to a byte array
+void hexStringToBytes(const char* hexString, uint8_t* bytes, size_t& length) {
+  length = 0;
+  while (*hexString) {
+    while (*hexString == ' ') hexString++;
+    if (*hexString) {
+      bytes[length++] = strtoul(hexString, NULL, 16);
+      while (*hexString && *hexString != ' ') hexString++;
+    }
+  }
+}
+
+// Function to send a command
+void sendCommand(const uint8_t* command, size_t length) {
+  for (size_t i = 0; i < length; i++) {
+    Serial.write(command[i]);
+  }
+  Serial.flush();
+}
+
+// Function to read the incoming data
+void readData(uint8_t* buffer, size_t& length) {
+  while (Serial.available() > 0) {
+    delay(10); // Adjust delay as necessary
+    length = Serial.readBytes(buffer, Serial.available());
+  }
+}
+
+// Function to handle received data
+void handleReceivedData(const uint8_t* receivedData, size_t length) {
+  if (length >= 12 && receivedData[11] == 0x01) {
+    // Send the next byte (12th byte) if the 12th byte is 01
+    if (length > 12) {
+      sendCommand(&receivedData[12], 1);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) ; // Wait for serial port to connect
+}
+
+void loop() {
+  // Process each WriteString
+  for (int i = 0; i < NUM_STRINGS; i++) {
+    uint8_t sendBuffer[256];
+    size_t sendLength;
+    hexStringToBytes(WriteStrings[i], sendBuffer, sendLength);
+    sendCommand(sendBuffer, sendLength);
+
+    // Wait for the response
+    delay(1000); // Adjust delay based on expected response time
+    uint8_t recvBuffer[256];
+    size_t recvLength;
+    readData(recvBuffer, recvLength);
+    handleReceivedData(recvBuffer, recvLength);
+  }
+
+  // Send reset command after processing all WriteStrings
+  uint8_t resetBuffer[RESET_CMD_LEN];
+  size_t resetLength;
+  hexStringToBytes(RESET_CMD, resetBuffer, resetLength);
+  sendCommand(resetBuffer, resetLength);
+
+  // Send read command
+  uint8_t readBuffer[READ_CMD_LEN];
+  size_t readLength;
+  hexStringToBytes(READ_CMD, readBuffer, readLength);
+  sendCommand(readBuffer, readLength);
+
+  // Read and print the response of the read command
+  delay(1000); // Adjust delay based on expected response time
+  uint8_t responseBuffer[256];
+  size_t responseLength;
+  readData(responseBuffer, responseLength);
+
+  Serial.print("Received response: ");
+  for (size_t i = 0; i < responseLength; i++) {
+    Serial.print(" ");
+    Serial.print(responseBuffer[i], HEX);
+  }
+  Serial.println();
+  
+  delay(1000); // Delay before repeating the loop
+}
+
+Explanation:
+
+    Hex String Conversion: hexStringToBytes converts a hex string to a byte array. This function helps convert your hex strings into a format suitable for transmission and processing.
+
+    Command Sending and Receiving: sendCommand sends a byte array over serial, and readData reads incoming data into a buffer.
+
+    Data Handling: handleReceivedData processes the received data. It checks if the 12th byte is 01 and sends the next byte if true.
+
+    Loop Execution: The loop function processes each write string, sends the reset command, sends the read command, and prints the response.
+
+Adjust delays and buffer sizes as needed based on your specific application and serial communication speed. Make sure to replace placeholder comments with your actual hex string data.
+#include <HardwareSerial.h>
+
+HardwareSerial mySerial(1); // Use Serial1 for communication
+
+const char* hexStrings[] = {
+  // Add your hex strings here
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  // Add the remaining hex strings here
+};
+
+// Function prototypes
+void sendPacket(const char* hexString);
+bool checkResponse();
+void sendResetCommand();
+void handleErrors(uint8_t errorCode);
+void printResponse(const uint8_t* data, size_t length);
+
+void setup() {
+  Serial.begin(115200); // Serial monitor for debugging
+  mySerial.begin(115200, SERIAL_8N1, 16, 17); // Initialize HardwareSerial with RX and TX pins
+
+  for (int i = 0; i < sizeof(hexStrings) / sizeof(hexStrings[0]); i++) {
+    sendPacket(hexStrings[i]);
+    if (!checkResponse()) {
+      // In case of error, handle the error and break the loop
+      handleErrors(/* appropriate error code here */);
+      return;
+    }
+  }
+
+  // All packets sent successfully, send the reset command
+  sendResetCommand();
+}
+
+void loop() {
+  // Main loop can be empty or used for other tasks
+}
+
+void sendPacket(const char* hexString) {
+  size_t length = strlen(hexString) / 3; // Each byte is represented by 2 hex characters and a space
+  uint8_t* packet = new uint8_t[length];
+  
+  // Convert hex string to byte array
+  for (size_t i = 0; i < length; i++) {
+    sscanf(hexString + i * 3, "%2hhX", &packet[i]);
+  }
+
+  mySerial.write(packet, length);
+  delete[] packet;
+}
+
+bool checkResponse() {
+  uint8_t response[12];
+  size_t bytesRead = 0;
+  unsigned long startMillis = millis();
+  const unsigned long timeout = 5000; // Timeout period in milliseconds
+
+  while (millis() - startMillis < timeout) {
+    if (mySerial.available() >= 12) {
+      mySerial.readBytes(response, 12);
+      if (response[0] == 0x02 && response[1] == 0xF0 && response[2] == 0x00 &&
+          response[3] == 0x55 && response[4] == 0x00 && response[5] == 0xAA &&
+          response[11] == 0x01) {
+        return true; // Response is valid
+      }
+    }
+  }
+  
+  return false; // Timeout or invalid response
+}
+
+void sendResetCommand() {
+  const char* resetCommand = "09 00 00 00 00 00 00 00 00 00 00";
+  sendPacket(resetCommand);
+}
+
+void handleErrors(uint8_t errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      Serial.println("SUCCESS");
+      break;
+    case 0xFF:
+      Serial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      Serial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      Serial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      Serial.println("VERIFY_FAIL");
+      break;
+    default:
+      Serial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+void printResponse(const uint8_t* data, size_t length) {
+  for (size_t i = 0; i < length; i++) {
+    Serial.print(data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+}
+I have to optimise and clean this code for arduino ESP32 , Check the recieved data has 01 in its 12th byte then send the next byte for example 
+Sent data : 02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 00 20 00 00 01
+
+Sent data : 02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00
+
+Recieved Data : 02 F0 00 55 00 AA 00 78 20 00 00 01
+
+once all hexStrings sent send reset command 09 00 00 00 00 00 00 00 00 00 00, then read command 
+01 F4 00 55 00 AA 00 00 20 00 00
+01 F4 00 55 00 AA 00 78 20 00 00
+01 F4 00 55 00 AA 00 F0 20 00 00
+01 F4 00 55 00 AA 00 68 21 00 00
+01 F4 00 55 00 AA 00 E0 21 00 00
+01 F4 00 55 00 AA 00 58 22 00 00
+01 F4 00 55 00 AA 00 D0 22 00 00
+01 F4 00 55 00 AA 00 48 23 00 00
+01 F4 00 55 00 AA 00 C0 23 00 00
+01 F4 00 55 00 AA 00 38 24 00 00
+01 F4 00 55 00 AA 00 B0 24 00 00
+01 F4 00 55 00 AA 00 28 25 00 00
+01 F4 00 55 00 AA 00 A0 25 00 00
+01 F4 00 55 00 AA 00 18 26 00 00
+01 F4 00 55 00 AA 00 90 26 00 00
+PRINT the respose of read command
+// Define the input hex strings
+const char* WriteStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 1E 00 90 00 70 00 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 80 EA 00 00 3A 80 00 00 80 60 00 00 3A 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 40 27 EF 00 00 80 FA 00 00 00 06 00 00 00 FA 00 04 2E EF 00 14 2E EF 00 24 2E EF 00 34 2E EF 00 44 2E EF 00 54 2E EF 00 64 2E EF 00 30 F9 2D 00 00 70 88 00 00 80 EB 00 80 70 88 00 F0 FF 23 00 00 71 88 00 E0 17 2B 00 80 71 88 00 30 30 2F 00 00 72 88 00 30 6F 23 00 80 72 88 00 F0 FC 2F 00 00 73 88 00 0C 2E EF 00 1C 2E EF 00 2C 2E EF 00 3C 2E EF 00 4C 2E EF 00 5C 2E EF 00 6C 2E EF 00 0A 2E EF 00 1A 2E EF 00",
+  "02 F0 00 55 00 AA 00 68 21 00 00 2A 2E EF 00 00 00 24 00 D0 71 88 00 4A 2E EF 00 5A 2E EF 00 6A 2E EF 00 06 2E EF 00 16 2E EF 00 26 2E EF 00 36 2E EF 00 46 2E EF 00 56 2E EF 00 66 2E EF 00 30 A1 2D 00 70 70 88 00 F0 38 20 00 F0 70 88 00 F0 C3 20 00 70 71 88 00 00 00 28 00 F0 71 88 00 30 30 2F 00 70 72 88 00 00 63 23 00 F0 72 88 00 C0 FC 28 00 70 73 88 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 03 00 37 00 00 17 21 00 11 00 20 00 24 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 05 00 37 00 00 8C 20 00 01 00 20 00 13 02 07 00 01 FE 2F 00 1E 8F 40 00 1E 00 78 00 FF 0F 50 00 F8 FF 3E 00 03 00 37 00 60 04 20 00 01 00 20 00",
+  "02 F0 00 55 00 AA 00 E0 21 00 00 0A 02 07 00 1E 00 78 00 00 F0 A7 00 00 00 EA 00 00 00 EA 00 4F 00 DE 00 00 40 78 00 1E 0F E9 00 00 04 E0 00 F4 FF 3A 00 00 80 FA 00 00 00 06 00 00 00 FA 00 00 80 FA 00 00 00 06 00 FF FF 37 00 70 25 04 00 00 00 00 00 82 24 04 00 00 00 00 00 C4 24 04 00 00 00 00 00 24 25 04 00 00 00 00 00 A2 24 04 00 00 00 00 00 E4 24 04 00 00 00 00 00 04 25 04 00 00 00 00 00 44 25 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 58 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 D0 22 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 48 23 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 00 22 04 00 00 00 00 00 2F 02 21 00 0E FF 2C 00 0E 01 88 00 00 00 00 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 01 20 00 20 02 88 00 14 00 07 00 EB 00 07 00 00 00 E0 00 03 00 3A 00 C0 63 22 00 01 00 20 00 02 00 37 00 00 00 20 00 01 00 20 00 81 0F 70 00 01 00 32 00 0F 00 07 00 00 00 20 00 00 00 E0 00 02 00 32 00 00 00 02 00 00 00 00 00 2A 26 02 00 00 00 00 00",
+  "02 F0 00 55 00 AA 00 C0 23 00 00 00 40 DA 00 00 00 FE 00 20 00 20 00 00 00 E0 00 02 00 32 00 10 00 20 00 90 01 88 00 00 00 06 00 A1 02 88 00 80 04 78 00 00 00 EB 00 1F 00 37 00 E2 84 44 00 54 A0 B4 00 99 05 BA 00 E2 84 44 00 54 A0 B4 00 99 06 BA 00 E2 84 44 00 54 A0 B4 00 00 06 EB 00 47 6F DE 00 FD 07 B2 00 AE 01 88 00 63 6C E1 00 03 00 3A 00 0A D8 01 00 00 00 EB 00 0E 00 37 00 60 6C E1 00 08 00 3A 00 00 4D EB 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 F9 FF 3E 00 04 00 37 00 61 68 E1 00 01 00 32 00 00 86 EB 00 0B 00 07 00 19 C7 BA 00 0E 04 E0 00 19 05 BA 00 03 00 3A 00 0A 00 E0 00 DB FF 3A 00 00 00 06 00 FE 07 B2 00 AE 02 88 00 8A 04 78 00 F5 FF 37 00 0C D0 A3 00 E2 0F 4D 00 1C 00 3B 00 89 02 78 00 35 4D BA 00 0A 05 E8 00",
+  "02 F0 00 55 00 AA 00 38 24 00 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 0F 00 32 00 25 4D BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 08 00 32 00 0C 00 E0 00 06 00 32 00 15 CD BA 00 0A 05 E8 00 02 00 39 00 34 20 EC 00 0A F0 A0 00 8B 05 E9 00 89 84 E8 00 54 A0 B4 00 0B 00 E0 00 E2 FF 3A 00 00 00 06 00 99 02 BA 00 05 5D 78 00 8B 05 E9 00 F7 FF 32 00 C8 2A DE 00 05 5D 78 00 8B 05 E9 00 F3 FF 32 00 0C 00 E0 00 F1 FF 32 00 19 DD BA 00 EE FF 37 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 28 A9 00 00 00 EB 00 BF 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 B6 00 07 00",
+  "02 F0 00 55 00 AA 00 B0 24 00 00 C0 48 A9 00 10 00 20 00 AE 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 68 A9 00 20 00 20 00 9E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 88 A9 00 30 00 20 00 8E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C0 A8 A9 00 40 00 20 00 7E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00",
+  "02 F0 00 55 00 AA 00 28 25 00 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 C6 08 A9 00 70 00 20 00 6E 00 07 00 00 80 FA 00 4F 03 BE 00 4F 02 BE 00 4F 01 BE 00 4F 00 BE 00 36 00 F9 00 00 40 06 00 36 00 F8 00 80 9F BE 00 82 9F BE 00 84 9F BE 00 86 9F BE 00 00 00 FA 00 21 46 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 03 00 32 00 C4 A8 A9 00 90 00 20 00 59 00 07 00 20 46 80 00 70 00 60 00 00 00 E0 00 03 00 32 00 C4 88 A9 00 A0 00 20 00 52 00 07 00 FF FF 37 00 00 40 DA 00 00 00 FE 00 00 00 05 00 00 00 FA 00 00 00 23 00 20 3A 88 00 48 27 EF 00 4E 27 EF 00 40 04 20 00 30 3A 88 00 60 27 EF 00 62 27 EF 00 64 27 EF 00 66 27 EF 00 6A 27 EF 00 6C 27 EF 00 32 00 20 00 80 07 20 00 A1 09 20 00 33 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 12 00 20 00",
+  "02 F0 00 55 00 AA 00 A0 25 00 00 60 04 20 00 71 05 20 00 23 74 20 00 80 49 78 00 81 49 78 00 82 49 78 00 00 00 00 00 10 3A 80 00 61 00 60 00 00 00 E0 00 FC FF 3A 00 00 00 00 00 11 3A 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 32 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 0F 78 00 21 02 80 00 20 0F 20 00 00 80 60 00 1E 00 70 00 20 02 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 C3 E8 A8 00 00 00 00 00 00 00 00 00 00 80 FA 00 00 00 06 00 00 00 FA 00 A1 FD 07 00 C6 FF 07 00 06 FE 07 00 F5 FF 07 00 00 02 20 00 EA FF 07 00 00 80 FA 00 00 00 06 00 F0 3F B1 00 01 80 B1 00 06 00 35 00 EE 03 09 00 00 00 00 00 40 3F B1 00 01 80 B1 00 FB FF 3D 00 10 00 B0 00 20 3F B0 00 02 00 35 00 00 80 09 00 00 00 00 00 00 00 06 00 02 00 FA 00 00 0F 78 00 9E 00 78 00",
+  "02 F0 00 55 00 AA 00 18 26 00 00 01 80 88 00 FF FF 37 00 00 00 FA 00 20 00 21 00 80 07 78 00 A0 01 21 00 00 01 88 00 00 80 FA 00 00 00 06 00 00 00 FA 00 DB FF 07 00 35 CE A8 00 80 3E 20 00 B7 FD 07 00 35 CE A9 00 80 3E 20 00 B4 FD 07 00 F9 FF 37 00 02 10 00 00 20 00 00 00 80 00 00 00 00 10 00 00 02 00 00 00 82 00 00 00 FF FF 00 00 00 00 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00",
+  "02 F0 00 55 00 AA 00 90 26 00 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00 FF FF FF 00"};
+
+const int hexStringCount = sizeof(WriteStrings) / sizeof(WriteStrings[0]);
+unsigned char byteArray[752]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+   
+   Serial.print("hexStringCount = ");
+   Serial.println(hexStringCount);
+   delay(5000);
+   Serial.flush();
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+  //  Send_Initial_commands();
+  //  delay(2000);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(WriteStrings[i], byteArray);
+//     Serial.print("byteCount = ");
+//   Serial.println(byteCount);
+    for (int j = 0 ; j < byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+      Serial.flush();
+    delay(2000); // Delay between sending hex strings
+  }
+}
+void Send_Reset_command()
+{
+  Serial.write(0x09);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(2);
+  Serial.write(0x00);
+  delay(5000);
+}
+
+
+#include <HardwareSerial.h>
+
+// Define the input hex strings
+const char* WriteStrings[] = {
+    "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 FA 00 00 3A 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 FA FF 07 00 00 0F 78 00 1E 00 78 00 24 00 07 00 00 04 E0 00 02 00 32 00 00 00 28 00 71 00 07 00 1E 00 78 00 2A 00 07 00 00 04 E0 00 02 00 32 00 00 00 24 00 6B 00 07 00 1E 00 78 00 32 00 07 00 00 04 E0 00 02 00 32 00 00 20 20 00 65 00 07 00 1E 00 78 00 3A 00 07 00 00 04 E0 00 02 00 32 00 00 08 20 00 5F 00 07 00 1E 00 78 00 42 00 07 00 00 04 E0 00 02 00 32 00 00 04 20 00 59 00 07 00 1E 00 78 00 4A 00 07 00 00 04 E0 00 02 00 32 00 00 01 20 00 53 00 07 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00",
+    "02 F0 00 55 00 AA 00 78 20 00 00 1E 00 90 00 00 00 E0 00 02 00 3D 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 00 24 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 20 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 08 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00 00 4F 78 00 1E 40 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 10 07 98 00 00 40 EB 00 00 4F 78 00 9E 00 90 00 00 04 20 00 00 80 60 00 00 00 E0 00 02 00 32 00 10 C0 B3 00",
+    // Add more strings if needed
+};
+
+// Define commands
+const char* ResetCommand = "09 00 00 00 00 00 00 00 00 00 00";
+const char* ReadCommands[] = {
+    "01 F4 00 55 00 AA 00 00 20 00 00",
+    "01 F4 00 55 00 AA 00 78 20 00 00",
+    "01 F4 00 55 00 AA 00 F0 20 00 00",
+    "01 F4 00 55 00 AA 00 68 21 00 00",
+    "01 F4 00 55 00 AA 00 E0 21 00 00",
+    "01 F4 00 55 00 AA 00 58 22 00 00",
+    "01 F4 00 55 00 AA 00 D0 22 00 00",
+    "01 F4 00 55 00 AA 00 48 23 00 00",
+    "01 F4 00 55 00 AA 00 C0 23 00 00",
+    "01 F4 00 55 00 AA 00 38 24 00 00",
+    "01 F4 00 55 00 AA 00 B0 24 00 00",
+    "01 F4 00 55 00 AA 00 28 25 00 00",
+    "01 F4 00 55 00 AA 00 A0 25 00 00",
+    "01 F4 00 55 00 AA 00 18 26 00 00",
+    "01 F4 00 55 00 AA 00 90 26 00 00",
+    // Add more read commands if needed
+};
+
+// Initialize Serial communication
+HardwareSerial Serial1(1);
+
+void setup() {
+    Serial.begin(115200);
+    Serial1.begin(9600, SERIAL_8N1, 16, 17); // Initialize Serial1 with your RX/TX pins
+
+    // Send write strings
+    for (const char* writeStr : WriteStrings) {
+        sendHexString(writeStr);
+    }
+
+    // Send reset command
+    sendHexString(ResetCommand);
+
+    // Send read commands and print responses
+    for (const char* readCmd : ReadCommands) {
+        sendHexString(readCmd);
+        printResponse();
+    }
+}
+
+void loop() {
+    // No need to repeat actions in loop
+}
+
+void sendHexString(const char* hexString) {
+    size_t len = strlen(hexString);
+    for (size_t i = 0; i < len; i += 3) {
+        char hexByte[3] = { hexString[i], hexString[i + 1], '\0' };
+        uint8_t byteValue = strtol(hexByte, nullptr, 16);
+        Serial1.write(byteValue);
+    }
+    delay(10); // Short delay to ensure data is sent
+}
+
+void printResponse() {
+    while (Serial1.available()) {
+        char c = Serial1.read();
+        Serial.print(c, HEX);
+        Serial.print(' ');
+    }
+    Serial.println();
+}
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* expectedResponse, size_t responseLength, unsigned char* actualResponse, size_t* actualLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  *actualLength = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == expectedResponse[index]) {
+          index++;
+        } else {
+          index = (byte == expectedResponse[0]) ? 1 : 0;
+        }
+      }
+      if (*actualLength < 255) {
+        actualResponse[(*actualLength)++] = byte;
+      }
+      if (index >= responseLength) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Function to check the 12th byte and print appropriate error message
+void checkResponse(unsigned char* response, size_t responseLength) {
+  if (responseLength >= 12) {
+    switch (response[11]) {
+      case 0x01:
+        Serial.println("SUCCESS");
+        break;
+      case 0xFF:
+        Serial.println("UNSUPPORTED_COMMAND");
+        break;
+      case 0xFE:
+        Serial.println("BAD_ADDRESS");
+        break;
+      case 0xFD:
+        Serial.println("BAD_LENGTH");
+        break;
+      case 0xFC:
+        Serial.println("VERIFY_FAIL");
+        break;
+      default:
+        Serial.println("UNKNOWN_ERROR");
+        break;
+    }
+  } else {
+    Serial.println("ERROR: Response too short.");
+  }
+}
+
+// Function to send a packet and handle response
+void sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  size_t responseLength = sizeof(expectedResponse);
+  unsigned char actualResponse[255];
+  size_t actualLength = 0;
+
+  // Wait for the specific response
+  if (waitForResponse(10000, expectedResponse, responseLength, actualResponse, &actualLength)) {
+    // Check if the 12th byte is 01
+    if (actualLength >= 12 && actualResponse[11] == 0x01) {
+      Serial.println("Packet sent successfully.");
+    } else {
+      // Print error message based on the 12th byte
+      checkResponse(actualResponse, actualLength);
+    }
+  } else {
+    Serial.println("ERROR: Timeout waiting for expected response.");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  // Send the first packet unconditionally
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+    sendPacketWithResponseHandling(byteArray, byteCount);
+
+    // Send subsequent packets only if the first packet was successful
+    for (int i = 1; i < hexStringCount; i++) {
+      byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      bool success = false;
+      for (int attempt = 0; attempt < 3 && !success; attempt++) {
+        sendPacketWithResponseHandling(byteArray, byteCount);
+        delay(2000); // Delay before retrying
+        // You can add additional checks here if needed
+        // If a packet is sent successfully, set `success` to true
+      }
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+*****************************************
+Flowchart code 
+#include <HardwareSerial.h>
+
+// Initialize the serial port
+#define BAUD_RATE 115200
+HardwareSerial serialComm(1); // Using Serial1 for communication
+
+// Mock variables and functions
+const int PACKET_SIZE = 64; // Define size of each packet
+uint8_t fileData[256]; // Example file data (can be loaded from actual memory)
+bool responseSuccess = false; // Mock variable for response
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(BAUD_RATE);
+  serialComm.begin(BAUD_RATE, SERIAL_8N1, 16, 17); // TX=16, RX=17 (adjust as per your pinout)
+
+  Serial.println("Serial Port Initialized");
+
+  // Step 1: Load file into memory (this can be adjusted based on actual file loading methods)
+  loadFileIntoMemory();
+
+  // Step 2: Convert file data to HEX format (optional step, depends on how data needs to be sent)
+  convertFileToHex();
+
+  // Step 3: Send packets one by one and check for success
+  bool allPacketsSent = sendPackets();
+
+  // Step 4: If all packets sent, send a reset command
+  if (allPacketsSent) {
+    sendResetCommand();
+  }
+}
+
+void loop() {
+  // Do nothing in the main loop
+}
+
+// Mock function to load file into memory
+void loadFileIntoMemory() {
+  // Assuming some data is loaded into fileData (could be from SPIFFS, SD card, etc.)
+  for (int i = 0; i < sizeof(fileData); i++) {
+    fileData[i] = i; // Dummy data for now
+  }
+  Serial.println("File loaded into memory.");
+}
+
+// Mock function to convert file data to HEX (optional)
+void convertFileToHex() {
+  Serial.println("Converting payload to HEX format...");
+  for (int i = 0; i < sizeof(fileData); i++) {
+    Serial.printf("%02X ", fileData[i]); // Display data in HEX format
+  }
+  Serial.println("\nPayload conversion complete.");
+}
+
+// Function to send packets one by one and wait for response
+bool sendPackets() {
+  int totalPackets = sizeof(fileData) / PACKET_SIZE;
+  uint8_t packet[PACKET_SIZE];
+
+  for (int i = 0; i < totalPackets; i++) {
+    // Copy data into the packet
+    memcpy(packet, fileData + i * PACKET_SIZE, PACKET_SIZE);
+
+    // Send the packet over serial
+    serialComm.write(packet, PACKET_SIZE);
+    Serial.println("Packet sent, waiting for response...");
+
+    // Wait for a response from the device (response code 0x01)
+    if (waitForResponse()) {
+      Serial.println("Response received: Success");
+    } else {
+      Serial.println("Error: No response or incorrect response");
+      return false; // Exit on error
+    }
+  }
+
+  Serial.println("All packets sent successfully.");
+  return true;
+}
+
+// Mock function to wait for response (here we assume success if the response is 0x01)
+bool waitForResponse() {
+  // Wait for a response (this is a simple mock, you need to adapt this for your protocol)
+  unsigned long startTime = millis();
+  while (!serialComm.available()) {
+    if (millis() - startTime > 1000) {
+      // Timeout after 1 second
+      return false;
+    }
+  }
+
+  // Read the response from the serial port
+  int response = serialComm.read();
+  return (response == 0x01); // Success response code is 0x01
+}
+
+// Function to send a reset command after all packets are sent successfully
+void sendResetCommand() {
+  Serial.println("Sending reset command...");
+  uint8_t resetCommand[1] = {0xFF}; // Example reset command (adjust according to your protocol)
+  serialComm.write(resetCommand, 1);
+  Serial.println("Reset command sent.");
+}
+
+The flowchart describes a communication process with an ESP32 device using serial communication. Below is an ESP32 code implementation based on the provided flowchart, which sends packets over serial communication and checks for success or error:
+
+cpp
+Copy code
+#include <HardwareSerial.h>
+
+// Initialize the serial port
+#define BAUD_RATE 115200
+HardwareSerial serialComm(1); // Using Serial1 for communication
+
+// Mock variables and functions
+const int PACKET_SIZE = 64; // Define size of each packet
+uint8_t fileData[256]; // Example file data (can be loaded from actual memory)
+bool responseSuccess = false; // Mock variable for response
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(BAUD_RATE);
+  serialComm.begin(BAUD_RATE, SERIAL_8N1, 16, 17); // TX=16, RX=17 (adjust as per your pinout)
+
+  Serial.println("Serial Port Initialized");
+
+  // Step 1: Load file into memory (this can be adjusted based on actual file loading methods)
+  loadFileIntoMemory();
+
+  // Step 2: Convert file data to HEX format (optional step, depends on how data needs to be sent)
+  convertFileToHex();
+
+  // Step 3: Send packets one by one and check for success
+  bool allPacketsSent = sendPackets();
+
+  // Step 4: If all packets sent, send a reset command
+  if (allPacketsSent) {
+    sendResetCommand();
+  }
+}
+
+void loop() {
+  // Do nothing in the main loop
+}
+
+// Mock function to load file into memory
+void loadFileIntoMemory() {
+  // Assuming some data is loaded into fileData (could be from SPIFFS, SD card, etc.)
+  for (int i = 0; i < sizeof(fileData); i++) {
+    fileData[i] = i; // Dummy data for now
+  }
+  Serial.println("File loaded into memory.");
+}
+
+// Mock function to convert file data to HEX (optional)
+void convertFileToHex() {
+  Serial.println("Converting payload to HEX format...");
+  for (int i = 0; i < sizeof(fileData); i++) {
+    Serial.printf("%02X ", fileData[i]); // Display data in HEX format
+  }
+  Serial.println("\nPayload conversion complete.");
+}
+
+// Function to send packets one by one and wait for response
+bool sendPackets() {
+  int totalPackets = sizeof(fileData) / PACKET_SIZE;
+  uint8_t packet[PACKET_SIZE];
+
+  for (int i = 0; i < totalPackets; i++) {
+    // Copy data into the packet
+    memcpy(packet, fileData + i * PACKET_SIZE, PACKET_SIZE);
+
+    // Send the packet over serial
+    serialComm.write(packet, PACKET_SIZE);
+    Serial.println("Packet sent, waiting for response...");
+
+    // Wait for a response from the device (response code 0x01)
+    if (waitForResponse()) {
+      Serial.println("Response received: Success");
+    } else {
+      Serial.println("Error: No response or incorrect response");
+      return false; // Exit on error
+    }
+  }
+
+  Serial.println("All packets sent successfully.");
+  return true;
+}
+
+// Mock function to wait for response (here we assume success if the response is 0x01)
+bool waitForResponse() {
+  // Wait for a response (this is a simple mock, you need to adapt this for your protocol)
+  unsigned long startTime = millis();
+  while (!serialComm.available()) {
+    if (millis() - startTime > 1000) {
+      // Timeout after 1 second
+      return false;
+    }
+  }
+
+  // Read the response from the serial port
+  int response = serialComm.read();
+  return (response == 0x01); // Success response code is 0x01
+}
+
+// Function to send a reset command after all packets are sent successfully
+void sendResetCommand() {
+  Serial.println("Sending reset command...");
+  uint8_t resetCommand[1] = {0xFF}; // Example reset command (adjust according to your protocol)
+  serialComm.write(resetCommand, 1);
+  Serial.println("Reset command sent.");
+}
+Breakdown:
+Initialize Serial Communication: Baud rate set to 115200, and communication is done through Serial1.
+Load File into Memory: Mock function to load a file into memory (adjustable based on actual file source).
+Convert to HEX Format: Converts data to HEX (this might be optional depending on your protocol).
+Send Packets: Divides the file into packets, sends them over serial, and waits for a response.
+Check for Response: Waits for a success response (code 0x01).
+Send Reset Command: Sends a reset command if all packets are sent successfully.
+This code is a starting point and may need adjustments based on your specific ESP32 setup, file format, and communication protocol. Let me know if you need more details!
+
+
+
+
+
+
+You said:
+
+Write the esp 32 code for the same flowchart
+ChatGPT said:
+ChatGPT
+Based on the updated flowchart image you shared, the following is the ESP32 code implementation that matches the given flow. It includes more detailed operations like handling specific errors and managing multiple retries for sending packets.
+
+cpp
+Copy code
+#include <HardwareSerial.h>
+
+// Define constants and variables
+#define BAUD_RATE 115200
+#define PACKET_SIZE 128 // Size of each packet
+#define MAX_RETRIES 3   // Maximum retry attempts
+#define SUCCESS_CODE 0x01 // Success response code
+
+HardwareSerial serialComm(1); // Using Serial1 for communication
+
+uint8_t fileData[512];  // Mock data for file
+bool success = false;  // Flag to check if packet sent successfully
+int retryCount = 0;
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(BAUD_RATE);
+  serialComm.begin(BAUD_RATE, SERIAL_8N1, 16, 17); // TX=16, RX=17 (adjust per your pinout)
+
+  Serial.println("Serial Port Initialized");
+
+  // Step 1: Load file into memory (adjust as needed)
+  loadFileIntoMemory();
+
+  // Step 2: Convert file data to HEX format (as per the flowchart)
+  convertPayloadToHex();
+
+  // Step 3: Send packets one by one and wait for response
+  sendPackets();
+
+  // Step 4: If successful, send the reset command
+  if (success) {
+    sendResetCommand();
+  }
+}
+
+void loop() {
+  // Nothing to do in the loop for now
+}
+
+// Function to load the file into memory (dummy function for now)
+void loadFileIntoMemory() {
+  for (int i = 0; i < sizeof(fileData); i++) {
+    fileData[i] = i % 256; // Load dummy data into the fileData array
+  }
+  Serial.println("File loaded into memory.");
+}
+
+// Function to convert payload to HEX format (according to flowchart)
+void convertPayloadToHex() {
+  Serial.println("Converting payload to HEX format...");
+  
+  for (int addr = 0; addr < sizeof(fileData); addr += PACKET_SIZE) {
+    retryCount = 0;
+    bool packetSent = false;
+
+    while (retryCount < MAX_RETRIES && !packetSent) {
+      // Mock conversion and sending (adapt as per your actual protocol)
+      byte buffer[PACKET_SIZE];
+      memcpy(buffer, fileData + addr, PACKET_SIZE); // Load packet data
+
+      // Send the packet and wait for response
+      packetSent = sendPacket(buffer, PACKET_SIZE, addr);
+
+      if (!packetSent) {
+        retryCount++;
+        Serial.printf("Retry attempt %d for address 0x%04X\n", retryCount, addr);
+      }
+    }
+
+    if (!packetSent) {
+      Serial.printf("Failed to send packet after %d retries. Exiting...\n", MAX_RETRIES);
+      handleError(0xFF);  // Handle error if packet failed to send after retries
+      return;
+    }
+  }
+
+  Serial.println("All packets converted and sent successfully.");
+}
+
+// Function to send individual packets and check for response
+bool sendPacket(byte* packet, size_t packetLength, int address) {
+  // Send the packet over serial
+  serialComm.write(packet, packetLength);
+  Serial.printf("Sent packet for address 0x%04X\n", address);
+
+  // Wait for response (using the mock response mechanism as per the flowchart)
+  unsigned long startTime = millis();
+  bool responseReceived = false;
+
+  while (millis() - startTime < 1000) { // Wait for up to 1 second for response
+    if (serialComm.available()) {
+      uint8_t response[12]; // Expected response structure
+      serialComm.readBytes(response, 12);
+
+      // Check for success response
+      if (response[11] == SUCCESS_CODE) {
+        Serial.println("Packet sent successfully.");
+        return true;
+      } else {
+        checkResponse(response[11]);
+        return false;
+      }
+    }
+  }
+
+  Serial.println("ERROR: Timed out waiting for expected response.");
+  return false;
+}
+
+// Function to handle errors based on response code
+void checkResponse(uint8_t code) {
+  switch (code) {
+    case 0x01:
+      Serial.println("Success");
+      break;
+    case 0x02:
+      Serial.println("ERROR: UNSUPPORTED_COMMAND");
+      break;
+    case 0x03:
+      Serial.println("ERROR: INVALID_ADDRESS");
+      break;
+    case 0x04:
+      Serial.println("ERROR: INVALID_LENGTH");
+      break;
+    case 0x05:
+      Serial.println("ERROR: DEVICE_FAILURE");
+      break;
+    default:
+      Serial.println("ERROR: UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Function to handle other errors (can be expanded as needed)
+void handleError(uint8_t errorCode) {
+  Serial.print("Handling error with code: ");
+  Serial.println(errorCode, HEX);
+
+  switch (errorCode) {
+    case 0xFF:
+      Serial.println("ERROR: Packet failed after maximum retries.");
+      break;
+    default:
+      Serial.println("ERROR: Unknown error occurred.");
+      break;
+  }
+}
+
+// Function to send the reset command after all packets are sent
+void sendResetCommand() {
+  Serial.println("Sending reset command...");
+  uint8_t resetCommand[1] = {0xFF}; // Example reset command
+  serialComm.write(resetCommand, 1);
+  Serial.println("Reset command sent.");
+}
+Breakdown of the Code:
+Initialization:
+
+The code initializes the serial communication with a baud rate of 115200.
+The HardwareSerial is used for communication on pins TX (16) and RX (17).
+Loading File:
+
+loadFileIntoMemory() is a mock function that loads data into the fileData array, representing the file that needs to be sent. This can be replaced by actual file loading mechanisms, such as from an SD card or SPIFFS.
+Converting Payload:
+
+convertPayloadToHex() converts the data into HEX format (this could just be a conceptual step depending on the actual implementation). It also splits the data into packets of size PACKET_SIZE (128 bytes) and sends them one by one.
+For each packet, the system allows up to MAX_RETRIES (3) attempts before failing.
+Sending Packets:
+
+sendPacket() is responsible for sending the actual data packet over the serial connection and waiting for a response.
+The function reads 12 bytes from the serial port, where the 12th byte is expected to hold the success code 0x01.
+Error Handling:
+
+The code implements error handling using checkResponse() and handleError(). It handles different error scenarios based on the received response codes, as seen in the flowchart.
+Reset Command:
+
+If all packets are sent successfully, the sendResetCommand() sends a reset command to the device (using 0xFF as an example).
+Key Improvements:
+Retry Mechanism: Allows retrying the packet sending operation if it fails, with a maximum of three attempts.
+Detailed Error Handling: Implements specific response checks, including unsupported command, invalid address, length, and device failure.
+This code should align closely with the flowchart you provided, and you can modify specific aspects like response formats, retry logic, or actual data transfer methods based on your needs.

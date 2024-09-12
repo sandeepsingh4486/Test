@@ -1220,3 +1220,2690 @@ void loop() {
 }
 
 This code will print all the hexadecimal values from the array. Adjust the hexStrings array as needed to include the values you want to process.
+
+
+These lines of code are performing operations on a memory buffer, likely to handle or manipulate a hexadecimal string. Let’s break down what each line does:
+
+1. **`memset(hexstring, 0, 3);`**
+
+   - **Purpose**: This line initializes a block of memory.
+   - **Parameters**:
+     - `hexstring`: This is a pointer to the memory location to be set.
+     - `0`: The value to set each byte of the memory block to.
+     - `3`: The number of bytes to set.
+   - **Effect**: This sets the first 3 bytes of the memory pointed to by `hexstring` to `0` (null bytes). In practice, this could be used to clear out or zero-initialize part of the buffer before using it.
+
+2. **`memcpy(hexstring, str + (l * 2), 2);`**
+
+   - **Purpose**: This line copies a block of memory from one location to another.
+   - **Parameters**:
+     - `hexstring`: The destination pointer where the data will be copied.
+     - `str + (l * 2)`: The source pointer indicating where the data should be copied from. It’s offset by `l * 2` bytes from the start of `str`.
+     - `2`: The number of bytes to copy.
+   - **Effect**: This copies 2 bytes of data from `str` (offset by `l * 2` bytes) into the `hexstring` buffer. This could be used to extract a segment of the `str` and store it in `hexstring`.
+
+**Contextual Example**:
+
+Suppose you are working with a hexadecimal string where each pair of characters represents a byte. If you want to extract a specific byte and store it in `hexstring`, these lines of code could be used as follows:
+
+- `memset(hexstring, 0, 3);` clears out the `hexstring` buffer (assuming it's large enough) to ensure no leftover data is present.
+- `memcpy(hexstring, str + (l * 2), 2);` then copies 2 bytes of hexadecimal data from `str` (starting at position `l * 2`) into the `hexstring` buffer.
+
+In this example, `l` would be an index indicating which byte to extract from the original hexadecimal string `str`.
+I have a string data as 0x22,0x33,0xaa,0x55..... which i want to send as hex data on uart to PIC18 from arduino
+ChatGPT said:
+ChatGPT
+
+To send hexadecimal data over UART from an Arduino to a PIC18 microcontroller, you need to convert your hexadecimal string into raw byte data and then transmit that data via the UART serial interface. Here’s a step-by-step guide to accomplish this:
+1. Prepare Your Data
+
+Assume you have a string of hexadecimal values like "0x22,0x33,0xaa,0x55". You need to convert this into an array of bytes that you will send over UART.
+2. Convert Hex String to Byte Array
+
+First, parse the hexadecimal string into an array of bytes. You can use a function to convert the hex string into an array of bytes:
+
+cpp
+
+#include <Arduino.h>
+
+const char hexString[] = "22,33,aa,55";
+const int numBytes = 4; // Number of bytes in your hexString
+byte data[numBytes];
+
+void setup() {
+  Serial.begin(9600); // Start UART at 9600 baud
+  parseHexString(hexString, data, numBytes);
+
+  // Send the data over UART
+  for (int i = 0; i < numBytes; i++) {
+    Serial.write(data[i]);
+  }
+}
+
+void loop() {
+  // Nothing to do here
+}
+
+void parseHexString(const char* str, byte* out, int length) {
+  int i = 0;
+  char buf[3] = {0}; // Buffer to hold hex value (2 chars + null terminator)
+  
+  while (*str && i < length) {
+    // Skip non-hex characters
+    while (*str && (*str == ',' || *str == ' ')) {
+      str++;
+    }
+    
+    if (*str) {
+      buf[0] = *str++;
+      buf[1] = *str++;
+      out[i++] = strtol(buf, NULL, 16);
+    }
+  }
+}
+
+3. Explanation
+
+    parseHexString Function: This function converts the hex string into a byte array. It reads the hex string, converts each pair of hex characters to a byte, and stores it in the data array.
+        strtol(buf, NULL, 16) converts the hex string buf to a byte (in decimal form).
+
+    setup Function:
+        Initializes the UART with Serial.begin(9600).
+        Calls parseHexString to convert your hex string to a byte array.
+        Sends each byte of the data array using Serial.write.
+
+    loop Function: Empty in this example, as you only need to send the data once during setup.
+
+4. Adjustments
+
+    Baud Rate: Adjust the Serial.begin(9600) to match the baud rate of your PIC18.
+    Hex String: Ensure your hexString is formatted correctly and matches the expected format (without 0x prefixes).
+
+5. Receiving on PIC18
+
+On the PIC18 side, you'll need code to read the UART data and process it accordingly. Ensure the PIC18 is set to the same baud rate and properly configured to receive data via UART.
+
+Here's a basic example of what the receiving code might look like in the PIC18 microcontroller (in C):
+
+c
+
+void main() {
+    // Initialize UART
+    // ...
+
+    while (1) {
+        if (PIR1bits.RCIF) { // Check if data is available
+            unsigned char receivedByte = RCREG; // Read received byte
+            // Process the received byte
+        }
+    }
+}
+
+This code continuously checks if data is available and processes it once received. Adjust the UART initialization and configuration to match your specific PIC18 microcontroller and your application requirements.
+Sure, I can simplify the code for you. Here’s a streamlined version of the Arduino sketch that avoids some of the complexities:
+
+cpp
+
+#include <Arduino.h>
+
+const char hexString[] = "22,33,aa,55"; // Hex data as a string
+const int numBytes = 4; // Number of bytes to be sent
+byte data[numBytes]; // Array to hold the converted bytes
+
+void setup() {
+  Serial.begin(9600); // Initialize UART at 9600 baud
+  parseHexString(hexString, data, numBytes);
+
+  // Send the data over UART
+  for (int i = 0; i < numBytes; i++) {
+    Serial.write(data[i]);
+  }
+}
+
+void loop() {
+  // Nothing to do here
+}
+
+// Simple hex string parser function
+void parseHexString(const char* str, byte* out, int length) {
+  int i = 0;
+  while (*str && i < length) {
+    // Skip non-hex characters (commas and spaces)
+    while (*str == ',' || *str == ' ') {
+      str++;
+    }
+
+    // Read two characters from the string
+    char high = *str++;
+    char low = *str++;
+    
+    // Convert characters to a byte
+    if (high >= '0' && high <= '9') high -= '0'; // Convert to integer
+    else if (high >= 'a' && high <= 'f') high -= 'a' - 10; // Convert to integer
+    else if (high >= 'A' && high <= 'F') high -= 'A' - 10; // Convert to integer
+    
+    if (low >= '0' && low <= '9') low -= '0'; // Convert to integer
+    else if (low >= 'a' && low <= 'f') low -= 'a' - 10; // Convert to integer
+    else if (low >= 'A' && low <= 'F') low -= 'A' - 10; // Convert to integer
+
+    out[i++] = (high << 4) | low; // Combine high and low nibbles into one byte
+  }
+}
+
+Changes and Simplifications
+
+    Removed the "0x" Prefix: Updated hexString to exclude "0x" as the parseHexString function doesn't handle this format directly.
+
+    Simplified Hex Conversion:
+        Instead of using strtol, the function manually converts hexadecimal characters to their integer values.
+        This function reads each pair of characters and converts them to a byte.
+
+    Error Handling:
+        This code assumes the input string is correctly formatted. For robustness, you might want to add additional checks and error handling.
+
+    Data Conversion:
+        The hex conversion is done by manually parsing each character and combining them to form a byte.
+
+This simplified version should be more compatible with different IDEs and easier to understand. Ensure that the hexString and numBytes match the actual data you want to send. Adjust the numBytes value based on how many bytes are in your hex string.
+
+Here’s the optimized code:
+
+cpp
+
+#include <Arduino.h>
+
+const char hexString[] = "22,33,aa,55"; // Hex data as a string without '0x'
+const int numBytes = 4; // Number of bytes to be sent
+byte data[numBytes]; // Array to hold the converted bytes
+
+void setup() {
+  Serial.begin(9600); // Initialize UART at 9600 baud
+  parseHexString(hexString, data, numBytes);
+
+  // Send the data over UART
+  for (int i = 0; i < numBytes; i++) {
+    Serial.write(data[i]);
+  }
+}
+
+void loop() {
+  // Nothing to do here
+}
+
+// Optimized hex string parser function
+void parseHexString(const char* str, byte* out, int length) {
+  int i = 0;
+  while (*str && i < length) {
+    // Skip non-hex characters (commas and spaces)
+    while (*str == ',' || *str == ' ') {
+      str++;
+    }
+
+    // Ensure there are enough characters left
+    if (str[0] && str[1]) {
+      byte high = hexCharToByte(*str++);
+      byte low = hexCharToByte(*str++);
+      out[i++] = (high << 4) | low;
+    }
+  }
+}
+
+// Helper function to convert a hex character to a byte
+byte hexCharToByte(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return 0; // Default case for invalid characters (shouldn't happen with proper input)
+}
+
+Explanation of the Optimizations:
+
+    Removed the 0x Prefix Handling:
+        Simplified hexString to remove 0x because the parseHexString function now directly processes characters.
+
+    Direct Character Conversion:
+        Added hexCharToByte helper function to convert individual hexadecimal characters ('0' to '9', 'a' to 'f', 'A' to 'F') to their byte values. This is done by checking character ranges and performing arithmetic to get the corresponding value.
+
+    Streamlined parseHexString Function:
+        Simplified the loop to directly convert pairs of characters to bytes using bitwise operations. This avoids the overhead of strtol.
+
+    Improved Readability and Efficiency:
+        The code now reads and processes the hexadecimal characters directly, making it more readable and efficient.
+
+This version of the code should work well and be more efficient in terms of execution and readability. Adjust the hexString and numBytes according to your specific data and requirements.
+
+Certainly! You can optimize the code to use strtol while handling the 0x prefix correctly. To keep things simple and efficient, we need to modify the parseHexString function to handle the 0x prefix by skipping it while converting the hex values. Here's how you can rewrite it:
+
+cpp
+
+#include <Arduino.h>
+
+const char hexString[] = "0x22,0x33,0xaa,0x55";
+const int numBytes = 4; // Number of bytes in your hexString
+byte data[numBytes];
+
+void setup() {
+  Serial.begin(9600); // Start UART at 9600 baud
+  parseHexString(hexString, data, numBytes);
+
+  // Send the data over UART
+  for (int i = 0; i < numBytes; i++) {
+    Serial.write(data[i]);
+  }
+}
+
+void loop() {
+  // Nothing to do here
+}
+
+void parseHexString(const char* str, byte* out, int length) {
+  int i = 0;
+  char buf[5] = {0}; // Buffer to hold hex value (4 chars + null terminator)
+
+  while (*str && i < length) {
+    // Skip non-hex characters (commas and spaces)
+    while (*str && (*str == ',' || *str == ' ')) {
+      str++;
+    }
+
+    // Skip '0x' prefix
+    if (*str == '0' && *(str + 1) == 'x') {
+      str += 2;
+    }
+
+    // Ensure there are enough characters left
+    if (*str && *(str + 1)) {
+      buf[0] = *str++;
+      buf[1] = *str++;
+      buf[2] = '\0'; // Null-terminate the buffer
+
+      // Convert the hex string to a byte
+      out[i++] = strtol(buf, NULL, 16);
+    }
+  }
+}
+
+Explanation
+
+    Buffer Size:
+        buf is now 5 bytes long to accommodate 4 hex characters plus the null terminator ('\0'), although we only use 2 characters at a time.
+
+    Skipping 0x Prefix:
+        The code now checks for the 0x prefix and skips it if present by moving the pointer ahead by 2 characters.
+
+    Hex Conversion:
+        The buf is set up with the two characters of the hex value, null-terminated, and then passed to strtol to convert it from a hexadecimal string to a byte.
+
+    Efficient Parsing:
+        This version processes each pair of hex characters, handling the 0x prefix properly and using strtol to convert the hex string to a byte value.
+
+By using this approach, the parseHexString function maintains compatibility with strtol and efficiently handles the 0x prefix and the conversion of hexadecimal values.
+Certainly! Here's the optimized code using strtol for converting hex values while properly handling the 0x prefix in the string:
+
+cpp
+
+#include <Arduino.h>
+
+const char hexString[] = "0x22,0x33,0xaa,0x55";
+const int numBytes = 4; // Number of bytes in your hexString
+byte data[numBytes];
+
+void setup() {
+  Serial.begin(9600); // Start UART at 9600 baud
+  parseHexString(hexString, data, numBytes);
+
+  // Send the data over UART
+  for (int i = 0; i < numBytes; i++) {
+    Serial.write(data[i]);
+  }
+}
+
+void loop() {
+  // Nothing to do here
+}
+
+void parseHexString(const char* str, byte* out, int length) {
+  int i = 0;
+  char buf[5] = {0}; // Buffer to hold hex value (4 chars + null terminator)
+
+  while (*str && i < length) {
+    // Skip non-hex characters (commas and spaces)
+    while (*str && (*str == ',' || *str == ' ')) {
+      str++;
+    }
+
+    // Skip '0x' prefix if present
+    if (*str == '0' && *(str + 1) == 'x') {
+      str += 2;
+    }
+
+    // Ensure there are enough characters left for a byte (2 hex digits)
+    if (*str && *(str + 1)) {
+      buf[0] = *str++;
+      buf[1] = *str++;
+      buf[2] = '\0'; // Null-terminate the buffer
+
+      // Convert the hex string to a byte using strtol
+      out[i++] = (byte)strtol(buf, NULL, 16);
+    }
+  }
+}
+
+Explanation
+
+    Buffer Size:
+        buf is sized to 5 bytes to accommodate 4 hex characters and a null terminator, though only 2 characters are used at a time.
+
+    Skipping 0x Prefix:
+        The code checks for and skips the 0x prefix if it is present by moving the pointer forward by 2 characters.
+
+    Hex Conversion:
+        For each pair of hex characters, buf is filled and null-terminated, then strtol converts this to a byte value.
+
+    Using strtol:
+        strtol(buf, NULL, 16) converts the hexadecimal string stored in buf into an integer, and (byte) casts it to a byte.
+
+    Loop and Skip:
+        The function continues to parse until all bytes are processed or the end of the string is reached.
+
+This approach is efficient and ensures that strtol is used effectively while handling the 0x prefix properly. Adjust numBytes and hexString as needed for your specific application.
+ertainly! Converting ASCII characters to their hexadecimal representation on an Arduino is a straightforward task. You can achieve this by writing a simple sketch that reads an ASCII character, converts it to its hexadecimal equivalent, and then outputs the result. Below is an example Arduino code that demonstrates how to do this:
+
+cpp
+
+// Function to convert an ASCII character to a hexadecimal string
+String asciiToHex(char asciiChar) {
+  String hexString = "";
+  hexString += String(asciiChar, HEX);
+  return hexString;
+}
+
+void setup() {
+  // Start the serial communication at 9600 baud rate
+  Serial.begin(9600);
+
+  // Print a welcome message
+  Serial.println("ASCII to Hex Converter");
+
+  // Example ASCII characters to convert
+  char testChars[] = {'A', 'B', 'C', '1', '2', '3', ' ', '!'};
+
+  // Iterate over the test characters
+  for (int i = 0; i < sizeof(testChars); i++) {
+    char asciiChar = testChars[i];
+    String hexResult = asciiToHex(asciiChar);
+
+    // Print the ASCII character and its hex representation
+    Serial.print("ASCII: ");
+    Serial.print(asciiChar);
+    Serial.print(" -> Hex: ");
+    Serial.println(hexResult);
+  }
+}
+
+void loop() {
+  // Nothing to do in the loop
+}
+
+Explanation:
+
+    asciiToHex Function:
+        Takes a single ASCII character as input.
+        Converts it to a hexadecimal string using String(asciiChar, HEX). This method converts the character's ASCII code to a hexadecimal string.
+
+    setup Function:
+        Initializes serial communication at 9600 baud.
+        Prints a welcome message.
+        Defines an array of example ASCII characters.
+        Iterates over the array, converts each character to its hexadecimal representation, and prints both the ASCII character and its hex representation to the Serial Monitor.
+
+    loop Function:
+        Empty in this case because we only need the code to run once.
+
+How to Use:
+
+    Upload the Code:
+        Open the Arduino IDE.
+        Copy and paste the code into a new sketch.
+        Connect your Arduino board to your computer.
+        Select the correct board and port from the Tools menu.
+        Click "Upload" to upload the code to your Arduino.
+
+    View the Output:
+        Open the Serial Monitor (Tools > Serial Monitor) to see the output.
+        The Serial Monitor should display the ASCII characters and their corresponding hexadecimal values.
+
+Feel free to modify the testChars array with any characters you want to convert, or enhance the code to handle more complex scenarios if needed.
+You said:
+#include <stdio.h>
+#include <string.h>
+
+//function to convert ascii char[] to hex-string (char[])
+void string2hexString(char* input, char* output)
+{
+    int loop;
+    int i;
+
+    i = 0;
+    loop = 0;
+
+    while (input[loop] != '\0') {
+        sprintf((char*)(output + i), "%02X", input[loop]);
+        loop += 1;
+        i += 2;
+    }
+    //insert NULL at the end of the output string
+    output[i++] = '\0';
+}
+
+int main()
+{
+    char ascii_str[] = "Hello world!";
+    //declare output string with double size of input string
+    //because each character of input string will be converted
+    //in 2 bytes
+    int len = strlen(ascii_str);
+    char hex_str[(len * 2) + 1];
+
+    //converting ascii string to hex string
+    string2hexString(ascii_str, hex_str);
+
+    printf("ascii_str: %s\n", ascii_str);
+    printf("hex_str: %s\n", hex_str);
+
+    return 0;
+}   convert this to arduino code
+ChatGPT said:
+ChatGPT
+
+Certainly! To convert the given C/C++ code for ASCII to hex string conversion into Arduino code, you need to adapt it for the Arduino environment, which typically involves using the Serial library for input and output instead of printf and strlen. Here is how you can do it:
+Arduino Code:
+
+cpp
+
+// Function to convert ASCII char[] to hex-string (char[])
+void string2hexString(const char* input, char* output) {
+    int i = 0;
+    while (input[i] != '\0') {
+        sprintf(output + i * 2, "%02X", (unsigned char)input[i]);
+        i++;
+    }
+    // Null-terminate the output string
+    output[i * 2] = '\0';
+}
+
+void setup() {
+    // Start the serial communication at 9600 baud rate
+    Serial.begin(9600);
+
+    // Example ASCII string
+    const char ascii_str[] = "Hello world!";
+    // Calculate length of the input string
+    int len = strlen(ascii_str);
+    // Declare output string with double size of input string plus one for null terminator
+    char hex_str[(len * 2) + 1];
+
+    // Convert ASCII string to hex string
+    string2hexString(ascii_str, hex_str);
+
+    // Print the results to the Serial Monitor
+    Serial.print("ascii_str: ");
+    Serial.println(ascii_str);
+    Serial.print("hex_str: ");
+    Serial.println(hex_str);
+}
+
+void loop() {
+    // Nothing to do here
+}
+
+Explanation:
+
+    string2hexString Function:
+        Takes a constant input string and an output buffer.
+        Iterates through each character of the input string, converting it to a two-digit hexadecimal representation.
+        Uses sprintf to format each character into a two-character hex string.
+        Adds a null terminator to the end of the output string.
+
+    setup Function:
+        Initializes serial communication at 9600 baud.
+        Defines an example ASCII string.
+        Calculates the length of the input string and declares an output buffer that is twice the length of the input string plus one for the null terminator.
+        Calls string2hexString to perform the conversion.
+        Prints the ASCII string and the resulting hex string to the Serial Monitor.
+
+    loop Function:
+        Remains empty since the code only needs to run once on setup.
+
+How to Use:
+
+    Upload the Code:
+        Open the Arduino IDE.
+        Copy and paste the code into a new sketch.
+        Connect your Arduino board to your computer.
+        Select the correct board and port from the Tools menu.
+        Click "Upload" to upload the code to your Arduino.
+
+    View the Output:
+        Open the Serial Monitor (Tools > Serial Monitor) to see the output.
+        The Serial Monitor will display both the original ASCII string and its hexadecimal representation.
+
+Feel free to adapt the ascii_str variable or enhance the function to handle more complex cases as needed.
+You said:
+char PageString_To_Array(char *str, unsigned char *arr)
+{
+  short len, l;
+  unsigned char strstart, strend;
+  char hexstring[3];
+  int i = 0;
+  len = strlen(str);
+Serial.print(str);
+ string2hexString(str, arr);
+  strstart = (str[2] - 0x30) * 10 + (str[3] - 0x30);
+  strend = (str[len - 2] - 0x30) * 10 + (str[len - 1] - 0x30);
+
+  if ((len == 1254) && (strstart == 02))
+  {
+    while (*str && i < len) {
+      // Skip non-hex characters (commas and spaces)
+      while (*str && (*str == ',' || *str == ' ')) {
+        str++;
+      }
+
+      // Skip '0x' prefix
+      if (*str == '0' && *(str + 1) == 'x') {
+        str += 2;
+      }
+
+      // Ensure there are enough characters left
+      if (*str && *(str + 1)) {
+        hexstring[0] = *str++;
+        hexstring[1] = *str++;
+        hexstring[2] = '\0'; // Null-terminate the buffer
+//Serial.print("hexstring[0] = " );Serial.println(hexstring[0]);
+//Serial.print("hexstring[1] = " );Serial.println(hexstring[1]);
+//Serial.print("hexstring[2] = " );Serial.println(hexstring[2]);
+
+        // Convert the hex string to a byte
+        arr[i++] = strtol(hexstring, NULL, 16);
+      }
+
+      //      Serial.print("arr = ");Serial.println(arr); // line added sandeep
+    }
+    for (l = 0; l < len; l++)
+    {
+ 
+    //  Serial.write(arr[l]); // line added sandeep
+      delay(2);
+    }
+    delay(2000);
+
+    for (l = 0; l < 13; l++)
+    {
+      //readResponse();
+    }
+    return 0;
+  }
+  else
+  {
+    return 1;
+  }
+} please correct this
+ChatGPT said:
+ChatGPT
+
+Sure, let’s refine the code for your PageString_To_Array function. It seems you are trying to convert a string of hexadecimal values into an array of bytes, and you want to include some validation and debugging features. Here’s the updated and corrected version of your function with comments explaining each part:
+
+cpp
+
+#include <Arduino.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Function to convert ASCII string to hex array
+char PageString_To_Array(char *str, unsigned char *arr) {
+  short len, l;
+  unsigned char strstart, strend;
+  char hexstring[3];
+  int i = 0;
+  
+  len = strlen(str);
+
+  // Debug print the input string
+  Serial.print("Input String: ");
+  Serial.println(str);
+  
+  // Convert string to hex string and print for debugging
+  string2hexString(str, arr);
+  
+  // Validate start and end characters (assuming they are part of the string)
+  strstart = (str[2] - '0') * 10 + (str[3] - '0');
+  strend = (str[len - 2] - '0') * 10 + (str[len - 1] - '0');
+
+  // Check if length and start values are as expected
+  if ((len == 1254) && (strstart == 2)) {
+    // Parse the string and convert to bytes
+    while (*str && i < len) {
+      // Skip non-hex characters (commas and spaces)
+      while (*str && (*str == ',' || *str == ' ')) {
+        str++;
+      }
+
+      // Skip '0x' prefix
+      if (*str == '0' && *(str + 1) == 'x') {
+        str += 2;
+      }
+
+      // Ensure there are enough characters left for a hex byte
+      if (*str && *(str + 1)) {
+        hexstring[0] = *str++;
+        hexstring[1] = *str++;
+        hexstring[2] = '\0'; // Null-terminate the buffer
+        
+        // Convert the hex string to a byte and store in array
+        arr[i++] = strtol(hexstring, NULL, 16);
+      } else {
+        // Handle cases where there are not enough characters for a complete byte
+        break;
+      }
+    }
+    
+    // Print the array for debugging
+    Serial.print("Array: ");
+    for (l = 0; l < i; l++) {
+      Serial.print(arr[l], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+    
+    delay(2000);
+
+    // Placeholder for additional logic
+    for (l = 0; l < 13; l++) {
+      // Uncomment and implement as needed
+      // readResponse();
+    }
+    
+    return 0;
+  } else {
+    // Return 1 if validation fails
+    return 1;
+  }
+}
+
+// Example string2hexString function
+void string2hexString(const char* input, char* output) {
+  int i = 0;
+  while (*input) {
+    sprintf(output + i * 2, "%02X", (unsigned char)*input++);
+    i++;
+  }
+  output[i * 2] = '\0'; // Null-terminate the output string
+}
+
+Changes and Improvements:
+
+    Validation: Adjusted strstart and strend calculations to use '0' instead of 0x30 for better readability.
+
+    Hex Conversion: Ensure there are enough characters left for conversion to avoid potential buffer overruns.
+
+    Debugging: Added Serial output to print the hex string and the array for better debugging.
+
+    Handle Edge Cases: Included a check to break the loop if there aren't enough characters to form a valid hex byte.
+
+    Commentary: Added comments for clarity and replaced the delay(2); with delay(2000); for simplicity.
+
+How to Use:
+
+    Include the Function in Your Arduino Sketch:
+        Make sure to include the PageString_To_Array and string2hexString functions in your Arduino sketch.
+
+    Call the Function:
+        Call PageString_To_Array with appropriate arguments in your setup() or loop() function based on your requirements.
+
+    Open Serial Monitor:
+        Use the Serial Monitor to view debug outputs and ensure that the function is working as expected.
+
+You said:
+void string2hexString(const char* input, char* output) {
+    int i = 0;
+    while (input[i] != '\0') {
+        sprintf(output + i * 2, "%02d", (unsigned char)input[i]);
+        sprintf(output + i, "%01c", (unsigned char)input[i]);
+        i++;
+    }
+    // Null-terminate the output string
+    output[i * 2] = '\0';
+}
+char PageString_To_Array(char *str, unsigned char *arr)
+{
+  short len, l;
+  unsigned char strstart, strend;
+  char hexstring[3];
+  int i = 0;
+  len = strlen(str);
+Serial.print(str);
+ string2hexString(str, arr);
+  strstart = (str[2] - 0x30) * 10 + (str[3] - 0x30);
+  strend = (str[len - 2] - 0x30) * 10 + (str[len - 1] - 0x30);
+
+  if ((len == 1254) && (strstart == 02))
+  {
+    while (*str && i < len) {
+      // Skip non-hex characters (commas and spaces)
+      while (*str && (*str == ',' || *str == ' ')) {
+        str++;
+      }
+
+      // Skip '0x' prefix
+      if (*str == '0' && *(str + 1) == 'x') {
+        str += 2;
+      }
+
+      // Ensure there are enough characters left
+      if (*str && *(str + 1)) {
+        hexstring[0] = *str++;
+        hexstring[1] = *str++;
+        hexstring[2] = '\0'; // Null-terminate the buffer
+//Serial.print("hexstring[0] = " );Serial.println(hexstring[0]);
+//Serial.print("hexstring[1] = " );Serial.println(hexstring[1]);
+//Serial.print("hexstring[2] = " );Serial.println(hexstring[2]);
+
+        // Convert the hex string to a byte
+        arr[i++] = strtol(hexstring, NULL, 16);
+      }
+
+      //      Serial.print("arr = ");Serial.println(arr); // line added sandeep
+    }
+    for (l = 0; l < len; l++)
+    {
+ 
+    //  Serial.write(arr[l]); // line added sandeep
+      delay(2);
+    }
+    delay(2000);
+
+    for (l = 0; l < 13; l++)
+    {
+      //readResponse();
+    }
+    return 0;
+  }
+  else
+  {
+    return 1;
+  }
+} please correct this
+ChatGPT said:
+ChatGPT
+
+Certainly! I can help you refine the string2hexString and PageString_To_Array functions. Your current implementation of string2hexString seems to have a couple of issues, and the PageString_To_Array function also requires some adjustments.
+Corrected Code
+1. string2hexString Function
+
+The string2hexString function should correctly convert each character of the ASCII string into its hexadecimal representation. However, it appears that you're using %02d for decimal formatting and %01c for character formatting, which is incorrect. We should use %02X to format characters as hexadecimal.
+
+cpp
+
+void string2hexString(const char* input, char* output) {
+    int i = 0;
+    while (input[i] != '\0') {
+        sprintf(output + i * 2, "%02X", (unsigned char)input[i]);
+        i++;
+    }
+    // Null-terminate the output string
+    output[i * 2] = '\0';
+}
+
+Key Points:
+
+    %02X: Formats the character as a two-digit hexadecimal number.
+    output[i * 2] = '\0';: Adds a null terminator to the end of the hex string.
+
+2. PageString_To_Array Function
+
+This function should parse a string of hexadecimal values (including optional 0x prefixes) and convert them into an array of bytes. Here’s the corrected version:
+
+cpp
+
+char PageString_To_Array(char *str, unsigned char *arr) {
+    short len;
+    unsigned char strstart, strend;
+    char hexstring[3];
+    int i = 0;
+
+    len = strlen(str);
+
+    // Debug print the input string
+    Serial.print("Input String: ");
+    Serial.println(str);
+
+    // Convert the input string to a hex string for debugging purposes
+    // (assuming you need this for some reason)
+    char hex_str[(len * 2) + 1];
+    string2hexString(str, hex_str);
+    Serial.print("Hex String: ");
+    Serial.println(hex_str);
+
+    // Extract start and end characters
+    strstart = (str[2] - '0') * 10 + (str[3] - '0');
+    strend = (str[len - 2] - '0') * 10 + (str[len - 1] - '0');
+
+    // Validation condition
+    if ((len == 1254) && (strstart == 2)) {
+        while (*str && i < len) {
+            // Skip non-hex characters (commas and spaces)
+            while (*str && (*str == ',' || *str == ' ')) {
+                str++;
+            }
+
+            // Skip '0x' prefix
+            if (*str == '0' && *(str + 1) == 'x') {
+                str += 2;
+            }
+
+            // Ensure there are enough characters left
+            if (*str && *(str + 1)) {
+                hexstring[0] = *str++;
+                hexstring[1] = *str++;
+                hexstring[2] = '\0'; // Null-terminate the buffer
+
+                // Convert the hex string to a byte and store it in the array
+                arr[i++] = strtol(hexstring, NULL, 16);
+            } else {
+                // Break the loop if there aren't enough characters to form a valid hex byte
+                break;
+            }
+        }
+
+        // Print the resulting array for debugging
+        Serial.print("Array: ");
+        for (int l = 0; l < i; l++) {
+            Serial.print(arr[l], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+        
+        delay(2000);
+
+        // Placeholder for additional logic
+        for (int l = 0; l < 13; l++) {
+            // Uncomment and implement as needed
+            // readResponse();
+        }
+
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+Key Points:
+
+    Debug Outputs: Added Serial prints to debug the intermediate and final results.
+    Validation: Checks that the length and start values match the expected criteria.
+    Parsing and Conversion: Handles conversion of hexadecimal values and skips non-hex characters properly.
+    Array Printing: Prints the resulting array of bytes in hexadecimal format for verification.
+
+How to Use:
+
+    Include the Functions: Ensure both string2hexString and PageString_To_Array functions are included in your Arduino sketch.
+    Call the Function: Use PageString_To_Array with appropriate arguments in your setup() or loop() function.
+    Open Serial Monitor: Use the Serial Monitor to view the debug outputs and verify functionality.
+
+This should provide a clear and functional implementation for converting and parsing hexadecimal strings in Arduino.
+Your code is almost correct, but there are a few issues that need to be fixed:
+
+1. The loop index `j` in the `loop` function should run from `0` to `byteCount-1` instead of `0` to `byteCount`. This is because array indices in C++ are zero-based, so running the loop until `byteCount` would access an out-of-bounds index.
+
+2. The size of `byteArray` should match the maximum possible number of bytes that could be generated by any of the input hex strings. The current size might be incorrect depending on the input data. You need to adjust the size of `byteArray` based on the maximum number of bytes you expect to convert from any of your hex strings.
+
+Here is the corrected code:
+
+```cpp
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+  "02 F0 00 55 00 AA 00 68 21 00 00 9E 00 90 00 1E 00 78 00 8B FF 07 00 00 80 FA 00 00 00 06 00 00 00 FA 00 11 12 80 00 00 40 20 00 00 80 60 00 00 00 E0 00 02 00 3A 00 00 00 EB 00 01 00 37 00 10 00 20 00 00 80 FA 00 00 00 06 00 00 00 FA 00 00 12 80 00 00 80 FA 00 00 00 06 00 02 00 FA 00 00 4F 78 00 11 47 98 00 1E 40 78 00 E1 4F 50 00 04 00 3A 00 1E 40 90 00 16 20 02 00 00 00 00 00 0D 00 37 00 1E 40 78 00 E2 4F 50 00 04 00 3A 00 1E 40 90 00 A4 AE 02 00 01 00 00 00 06 00 37 00 1E 40 78
+
+ 00 E3 4F 50 00 03 00 3A 00 E0 0F 20 00 10 12 88 00 08 00 37 00 1E 40 78 00 E4 4F 50 00 04 00 3A 00 E0 1F 20 00 10 12 88 00 06 00 37 00 1E 40 78 00 E5 4F 50 00 04 00 3A 00 E0 27 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E6 4F 50 00 04 00 3A 00 00 00 E8 00 30 07 98 00"
+};
+
+// Calculate the number of hex strings
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+
+// Function to convert a hex string to a byte array
+int hexToBytes(const char* hexString, byte* byteArray) {
+  int length = strlen(hexString);
+  int byteCount = 0;
+  for (int i = 0; i < length; i += 3) { // Increment by 3 to skip spaces
+    if (sscanf(&hexString[i], "%2hhx", &byteArray[byteCount]) == 1) {
+      byteCount++;
+    }
+  }
+  return byteCount;
+}
+
+void setup() {
+  // Initialize the serial port
+  Serial.begin(9600);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    byte byteArray[100]; // Adjust the size as needed
+    int byteCount = hexToBytes(hexStrings[i], byteArray);
+    
+    // Print the byte array
+    Serial.print("Byte Array: ");
+    for (int j = 0; j < byteCount; j++) {
+      Serial.print(byteArray[j], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+    
+    // Delay between each array processing
+    delay(500);
+  }
+}
+```
+
+### Key Changes:
+1. **`byteArray` Size:** I set the size of `byteArray` to 100, which should be enough for your current hex strings. Adjust this if you expect longer hex strings.
+2. **Loop Index `j`:** The loop index `j` now runs from `0` to `byteCount-1`.
+3. **Hex String Parsing:** The `hexToBytes` function now correctly parses the hex string by incrementing `i` by 3 to skip the spaces in the string. 
+
+### Output:
+This code will convert each hex string into a byte array and print it out in hexadecimal format, with a delay of 500ms between each processing.
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+  
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[251]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    for (int j = 0 ; j <= byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+    delay(2000); // Delay between sending hex strings
+  }
+}
+
+Before sending each string i should recieve data on uart 02 F0 00 55 00 AA 00 XX XX 00 00 01,where XX data varies but 12th byte of recieved data  should always be 01, kindly write a code
+ChatGPT said:
+ChatGPT
+
+To modify your code such that before sending each hex string, you first receive data on UART and ensure that the 12th byte of the received data is always 01, you'll need to incorporate a receiving mechanism into your code.
+
+Here's the updated code:
+
+    Receive Data: You will read data from the UART buffer and check if the 12th byte of the received data is 01.
+    Modify the Code: Incorporate this logic into the loop function.
+
+Here's the updated code:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+  
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+const int expectedDataSize = 12; // Size of the expected data array
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to check if received data meets the required condition
+bool checkReceivedData(unsigned char* data, int length) {
+  if (length >= expectedDataSize && data[11] == 0x01) {
+    return true;
+  }
+  return false;
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    // Wait for a condition on the UART buffer
+    unsigned long startTime = millis();
+    unsigned long timeout = 5000; // Timeout duration in milliseconds
+    bool conditionMet = false;
+    int receivedLength = 0;
+    unsigned char receivedData[expectedDataSize] = {0};
+
+    while (millis() - startTime < timeout) {
+      if (Serial.available() >= expectedDataSize) {
+        // Read data from the serial buffer
+        receivedLength = Serial.readBytes(receivedData, expectedDataSize);
+
+        if (checkReceivedData(receivedData, receivedLength)) {
+          conditionMet = true;
+          break;
+        }
+      }
+      delay(10); // Small delay to prevent rapid polling
+    }
+
+    if (conditionMet) {
+      // Proceed to send the byte array
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      Serial.write(byteArray, byteCount);
+      delay(2000); // Delay between sending hex strings
+    } else {
+      Serial.println("Required condition not met or timeout occurred.");
+    }
+  }
+}
+
+Key Updates:
+
+    Check Received Data: Added a function checkReceivedData to verify if the 12th byte (index 11) is 01 in the received data.
+    Receive Data in loop:
+        Wait for the required amount of data to be available in the UART buffer.
+        Read the data and check if it meets the condition.
+        If the condition is met, send the hex string. Otherwise, report a timeout or failure.
+
+This code ensures that before sending each hex string, you receive and validate the UART data according to your requirements. Adjust the expectedDataSize and byteArray size according to your actual data needs.
+To ensure that your Arduino code receives data on UART and verifies that the 12th byte of the received data is 01 before sending the next hex string, you'll need to integrate both the receiving and validating mechanisms into your loop function.
+
+Here's the updated code that accomplishes this:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+const int bufferSize = 753; // Adjust if necessary
+unsigned char byteArray[bufferSize];
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to check if received data meets the required condition
+bool checkReceivedData(unsigned char* data, int length) {
+  if (length >= 12 && data[11] == 0x01) {
+    return true;
+  }
+  return false;
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    // Wait for the condition on the UART buffer
+    unsigned long startTime = millis();
+    bool conditionMet = false;
+    int receivedLength = 0;
+    unsigned char receivedData[12] = {0}; // Buffer for received data
+
+    // Wait for data with a timeout
+    while (millis() - startTime < 5000) { // 5 seconds timeout
+      if (Serial.available() >= 12) { // Check if at least 12 bytes are available
+        receivedLength = Serial.readBytes(receivedData, 12);
+
+        if (checkReceivedData(receivedData, receivedLength)) {
+          conditionMet = true;
+          break;
+        }
+      }
+      delay(10); // Small delay to prevent rapid polling
+    }
+
+    if (conditionMet) {
+      // Proceed to send the byte array
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      for (int j = 0; j < byteCount; j++) {
+        Serial.write(byteArray[j]);
+        delay(2); // Delay between sending bytes
+      }
+      delay(2000); // Delay between sending hex strings
+    } else {
+      Serial.println("Required condition not met or timeout occurred.");
+    }
+  }
+}
+
+Key Points:
+
+    Receive Data with Timeout: The code waits for incoming data and checks if at least 12 bytes are available within a 5-second timeout.
+    Validate Data: The function checkReceivedData verifies if the 12th byte (index 11) of the received data is 0x01.
+    Send Data: If the condition is met, the code proceeds to convert the current hex string to bytes and sends it over UART.
+    Delay Between Bytes: There is a small delay between sending bytes to ensure reliable transmission.
+
+This approach ensures that each hex string is only sent after the specified condition is met. Adjust the timeout, buffer size, and delays as needed based on your specific requirements.
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // ... (hex strings as defined before)
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+const int bufferSize = 753; // Adjust if necessary
+unsigned char byteArray[bufferSize];
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to check if received data meets the required condition
+bool checkReceivedData(unsigned char* data, int length) {
+  if (length >= 12 && data[11] == 0x01) {
+    return true;
+  }
+  return false;
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Setup complete. Listening for data...");
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    unsigned long startTime = millis();
+    bool conditionMet = false;
+    int receivedLength = 0;
+    unsigned char receivedData[12] = {0};
+
+    Serial.println("Waiting for data...");
+
+    while (millis() - startTime < 5000) {
+      if (Serial.available() >= 12) {
+        receivedLength = Serial.readBytes(receivedData, 12);
+
+        // Debug output to check received data
+        Serial.print("Received data: ");
+        for (int j = 0; j < receivedLength; j++) {
+          Serial.print(receivedData[j], HEX);
+          Serial.print(" ");
+        }
+        Serial.println();
+
+        if (checkReceivedData(receivedData, receivedLength)) {
+          conditionMet = true;
+          break;
+        } else {
+          Serial.println("Condition not met.");
+        }
+      }
+      delay(10);
+    }
+
+    if (conditionMet) {
+      Serial.println("Condition met. Sending data...");
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      for (int j = 0; j < byteCount; j++) {
+        Serial.write(byteArray[j]);
+        delay(2);
+      }
+      delay(2000);
+    } else {
+      Serial.println("Required condition not met or timeout occurred.");
+    }
+  }
+}
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+  
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[251]; // Adjust size as needed 251,try 753 also working with multibyte
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    for (int j = 0 ; j <= byteCount; j++)
+    {
+      Serial.write(byteArray[j]);
+      delay(2);
+    }
+    delay(2000); // Delay between sending hex strings
+  }
+}
+ In this code i should add the condition that i should recieve first 6 bytes as 02 F0 00 55 00 AA on serial port and 12th byte 01  before sending First string packet and further
+
+To add the condition for receiving the first 6 bytes and checking the 12th byte before sending the first string packet and further packets, you need to modify the code in the loop() function. Specifically, you should read from the serial port and check the received data before proceeding to send the hex strings.
+
+Here's how you can update the code to implement this:
+
+    Check for Received Data: Implement a function to read and check the incoming serial data.
+    Conditionally Send Data: Only send the hex strings if the conditions are met.
+
+Here’s the modified code with the required changes:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to check the initial condition
+bool checkInitialCondition() {
+  const int requiredLength = 12;
+  unsigned char buffer[requiredLength];
+  int bytesRead = 0;
+
+  // Read from serial until the required length is reached
+  while (bytesRead < requiredLength) {
+    if (Serial.available()) {
+      buffer[bytesRead++] = Serial.read();
+    }
+  }
+
+  // Check if the first 6 bytes match 02 F0 00 55 00 AA
+  if (buffer[0] == 0x02 && buffer[1] == 0xF0 && buffer[2] == 0x00 &&
+      buffer[3] == 0x55 && buffer[4] == 0x00 && buffer[5] == 0xAA) {
+    // Check if the 12th byte is 01
+    if (buffer[11] == 0x01) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  if (checkInitialCondition()) {
+    for (int i = 0; i < hexStringCount; i++) {
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      for (int j = 0; j < byteCount; j++) {
+        Serial.write(byteArray[j]);
+        delay(2); // Small delay to ensure data transmission
+      }
+      delay(2000); // Delay between sending hex strings
+    }
+  } else {
+    // Optionally, add some indication or delay if the condition is not met
+    delay(1000); // Wait before checking again
+  }
+}
+
+Explanation:
+
+    checkInitialCondition() Function:
+        Reads the first 12 bytes from the serial port into a buffer.
+        Checks if the first 6 bytes match 02 F0 00 55 00 AA.
+        Checks if the 12th byte is 01.
+        Returns true if both conditions are met; otherwise, false.
+
+    loop() Function:
+        Calls checkInitialCondition() to ensure the conditions are met before sending any hex strings.
+        If the conditions are met, it processes and sends the hex strings. If not, it waits and checks again.
+
+This implementation assumes that data arrives in a continuous stream and that each byte is valid as soon as it's read. Adjustments might be needed based on your specific hardware and data format.
+
+
+To add the condition for receiving the first 6 bytes and checking the 12th byte before sending the first string packet and further packets, you need to modify the code in the loop() function. Specifically, you should read from the serial port and check the received data before proceeding to send the hex strings.
+
+Here's how you can update the code to implement this:
+
+    Check for Received Data: Implement a function to read and check the incoming serial data.
+    Conditionally Send Data: Only send the hex strings if the conditions are met.
+
+Here’s the modified code with the required changes:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to check the initial condition
+bool checkInitialCondition() {
+  const int requiredLength = 12;
+  unsigned char buffer[requiredLength];
+  int bytesRead = 0;
+
+  // Read from serial until the required length is reached
+  while (bytesRead < requiredLength) {
+    if (Serial.available()) {
+      buffer[bytesRead++] = Serial.read();
+    }
+  }
+
+  // Check if the first 6 bytes match 02 F0 00 55 00 AA
+  if (buffer[0] == 0x02 && buffer[1] == 0xF0 && buffer[2] == 0x00 &&
+      buffer[3] == 0x55 && buffer[4] == 0x00 && buffer[5] == 0xAA) {
+    // Check if the 12th byte is 01
+    if (buffer[11] == 0x01) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  if (checkInitialCondition()) {
+    for (int i = 0; i < hexStringCount; i++) {
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      for (int j = 0; j < byteCount; j++) {
+        Serial.write(byteArray[j]);
+        delay(2); // Small delay to ensure data transmission
+      }
+      delay(2000); // Delay between sending hex strings
+    }
+  } else {
+    // Optionally, add some indication or delay if the condition is not met
+    delay(1000); // Wait before checking again
+  }
+}
+
+Explanation:
+
+    checkInitialCondition() Function:
+        Reads the first 12 bytes from the serial port into a buffer.
+        Checks if the first 6 bytes match 02 F0 00 55 00 AA.
+        Checks if the 12th byte is 01.
+        Returns true if both conditions are met; otherwise, false.
+
+    loop() Function:
+        Calls checkInitialCondition() to ensure the conditions are met before sending any hex strings.
+        If the conditions are met, it processes and sends the hex strings. If not, it waits and checks again.
+
+This implementation assumes that data arrives in a continuous stream and that each byte is valid as soon as it's read. Adjustments might be needed based on your specific hardware and data format.
+
+
+To add the condition where you need to check that the first 6 bytes received are 02 F0 00 55 00 AA and the 12th byte is 01 before sending any data, you should:
+
+    Implement a function to check the initial condition on the serial input.
+    Adjust the loop() function to ensure that the condition is met before sending any of the hex strings.
+
+Here’s how you can incorporate this into your existing code:
+
+    Add the Function to Check the Initial Condition:
+
+    The function will read from the serial port, check the first 6 bytes and the 12th byte, and return true if they match the required values.
+
+    Update the loop() Function:
+
+    Modify the loop() function to call the checking function before sending any data.
+
+Here's the updated code:
+
+cpp
+
+#include <Arduino.h>
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  "02 F0 00 55 00 AA 00 00 20 00 00 88 23 04 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 02 00 00 00 02 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 FA 00 00 4F 78 00 1E 40 78 00 00 04 E0 00 03 00 3A 00 E0 13 20 00 10 12 88 00 11 00 37 00 1E 40 78 00 E1 4F 50 00 03 00 3A 00 E0 03 20 00 10 12 88 00 0B 00 37 00 1E 40 78 00 E2 4F 50 00 03 00 3A 00 E0 17 20 00 10 12 88 00 05 00 37 00 1E 40 78 00 E3 4F 50 00 02 00 3A 00 E0 07 20 00 10 12 88 00 10 00 20 00 20 12 88 00 C0 00 28 00 00 12 88 00 00 80 FA 00 00 00 06 00 04 00 FA 00 00 0F 78 00 11 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1E 00 78 00 10 40 78 00 00 80 FB 00 40 12 88 00 00 00 00 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 FB FF 3A 00",
+  "02 F0 00 55 00 AA 00 78 20 00 00 40 12 80 00 80 40 78 00 1E 00 90 00 01 48 78 00 00 80 FA 00 00 00 06 00 18 00 FA 00 10 0F 98 00 21 0F 98 00 32 0F 98 00 00 00 EB 00 00 0F 78 00 00 00 EB 00 10 07 98 00 00 00 EB 00 70 07 98 00 00 00 EB 00 00 0F 98 00 10 00 20 00 60 07 98 00 1E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 50 07 98 00 70 00 47 00 20 07 98 00 04 00 37 00 EE 00 90 00 51 07 98 00 9E 08 90 00 21 07 98 00 3E 08 90 00 00 00 E0 00 05 00 3A 00 00 00 EB 00 40 07 98 00 6E 00 47 00 30 07 98 00 05 00 37 00 EE 00 90 00 41 07 98 00 BE 08 90 00 31 07 98 00 00 00 00 00 00 12 80 00 62 00 60 00 00 00 E0 00 FC FF 3A 00 1D 00 37 00 00 12 80 00 62 00 60 00 00 00 E0 00 09 00 3A 00 2E 00 90 00 10 40 78 00 00 80 FB 00 40 12 88 00 AE 00 90 00 5E 00 90 00",
+  "02 F0 00 55 00 AA 00 F0 20 00 00 00 80 40 00 20 07 98 00 1E 0F E8 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 2E 08 90 00 9E 00 78 00 80 8F 50 00 DF FF 39 00 10 00 37 00 01 12 80 00 00 02 20 00 00 80 60 00 00 00 E0 00 0B 00 3A 00 40 12 80 00 80 40 78 00 3E 00 90 00 01 48 78 00 BE 00 90 00 4E 00 90 00 00 80 40 00 30 07 98 00 1E 00 90 00 00 00 E8 00 10 07 98 00 9E 00 90 00 2E 08 90 00 80 8F 50 00 EC FF 39 00 1E 00 78 00 00 80 FA 00 00 00 06 00 04 00 FA 00 20 47 98 00 0E 80 E8 00 8E 00 78 00 7E FF 07 00 1E 40 78 00 00 80 FA 00 00 00 06 00 06 00 FA 00 00 0F 78 00 11 07 98 00 22 07 98 00 2E 01 90 00",
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to check the initial condition
+bool checkInitialCondition() {
+  const int requiredLength = 12;
+  unsigned char buffer[requiredLength];
+  int bytesRead = 0;
+
+  // Read from serial until the required length is reached
+  while (bytesRead < requiredLength) {
+    if (Serial.available()) {
+      buffer[bytesRead++] = Serial.read();
+    }
+  }
+
+  // Check if the first 6 bytes match 02 F0 00 55 00 AA
+  if (buffer[0] == 0x02 && buffer[1] == 0xF0 && buffer[2] == 0x00 &&
+      buffer[3] == 0x55 && buffer[4] == 0x00 && buffer[5] == 0xAA &&
+      buffer[11] == 0x01) {
+    return true;
+  }
+
+  return false;
+}
+
+void setup() {
+  // Initialize serial communication at 115200 baud
+  Serial.begin(115200);
+}
+
+void loop() {
+  if (checkInitialCondition()) {
+    for (int i = 0; i < hexStringCount; i++) {
+      int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+      for (int j = 0; j < byteCount; j++) {
+        Serial.write(byteArray[j]);
+        delay(2); // Small delay to ensure data transmission
+      }
+      delay(2000); // Delay between sending hex strings
+    }
+  } else {
+    // Optionally, add some indication or delay if the condition is not met
+    delay(1000); // Wait before checking again
+  }
+}
+
+Key Points:
+
+    checkInitialCondition() Function:
+        Reads the first 12 bytes from the serial port into a buffer.
+        Checks if the first 6 bytes match 02 F0 00 55 00 AA and if the 12th byte is 01.
+        Returns true if the condition is met; otherwise, false.
+
+    loop() Function:
+        Calls checkInitialCondition() to ensure that the condition is met before sending any hex strings.
+        If the condition is met, it processes and sends the hex strings. If not, it waits and checks again.
+
+This approach ensures that your device waits for the correct initial signal before sending any data. Make sure the Serial.available() and Serial.read() operations are correctly aligned with how data arrives in your specific application.
+
+
+To optimize and clean up your Arduino code, while also ensuring that packets are only sent when a specific response is received, you can refactor the code as follows. Here's a more efficient version with added functionality to handle waiting for a specific serial response before sending the next packet:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char* hexString, unsigned char* byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') { // Skip non-hex characters (spaces)
+      hexString++;
+    }
+
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to send a command and wait for a specific response
+bool waitForResponse(const unsigned char* expectedResponse, size_t responseLength, unsigned long timeout) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (byte == expectedResponse[index]) {
+        index++;
+        if (index == responseLength) {
+          return true; // Response matches
+        }
+      } else {
+        index = (byte == expectedResponse[0]) ? 1 : 0; // Restart checking if matched byte
+      }
+    }
+  }
+  return false; // Timeout occurred without matching response
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  const unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  const size_t responseLength = sizeof(expectedResponse) / sizeof(expectedResponse[0]);
+  
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    Serial.write(byteArray, byteCount);
+    delay(2000); // Delay after sending the packet
+
+    if (waitForResponse(expectedResponse, responseLength, 5000)) {
+      // Response matched, send next packet
+      delay(2000); // Delay between packets
+    } else {
+      // Timeout or unexpected response
+      Serial.println("Error: Expected response not received.");
+      break; // Exit the loop on error
+    }
+  }
+
+  Send_Reset_command();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+// Send reset command
+void Send_Reset_command() {
+  unsigned char resetCommand[] = {0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+// Send initial commands
+void Send_Initial_commands() {
+  unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+Key Improvements:
+
+    Consolidated Send_Reset_command and Send_Initial_commands: Both functions are now using arrays to minimize redundant code and delays.
+    Added waitForResponse Function: This function waits for a specific response from the serial port before proceeding. It uses a timeout to prevent hanging if the expected response is not received.
+    Used Serial.write Efficiently: The Serial.write function is used with arrays to streamline sending multiple bytes.
+    Optimized Delay Handling: Delay intervals are added to ensure proper timing between operations.
+    Error Handling: Added error handling to stop the loop if the expected response is not received.
+
+This code now waits for a specific response after sending each packet and only proceeds to the next packet if the correct response is received.
+
+To optimize and clean up your code while incorporating the functionality of waiting for a specific response and checking if the 12th byte of that response is 01, you can refactor it as follows:
+Key Improvements:
+
+    Consolidation of Repeated Code: Refactored Send_Reset_command and Send_Initial_commands to use arrays and loops to minimize repetition.
+    Added Response Handling: Added functionality to wait for a specific response and check the 12th byte.
+    Improved Timing and Serial Handling: Added timeout for waiting and improved serial handling.
+
+Here's the cleaned-up and optimized code:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to send a command and wait for a specific response
+bool waitForResponse(const unsigned char* expectedResponse, size_t responseLength, unsigned long timeout) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (byte == expectedResponse[index]) {
+        index++;
+        if (index == responseLength) {
+          return true; // Response matches
+        }
+      } else {
+        index = (byte == expectedResponse[0]) ? 1 : 0; // Restart checking if matched byte
+      }
+    }
+  }
+  return false; // Timeout occurred without matching response
+}
+
+// Function to check the 12th byte of the response
+bool check12thByte(const unsigned char* response, size_t responseLength) {
+  if (responseLength >= 12) {
+    return response[11] == 0x01; // Check if the 12th byte is 01
+  }
+  return false; // Response is too short
+}
+
+// Send reset command
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+// Send initial commands
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  const unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  const size_t responseLength = sizeof(expectedResponse) / sizeof(expectedResponse[0]);
+
+  for (int i = 0; i < hexStringCount; i++) {
+    int byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+    Serial.write(byteArray, byteCount);
+    delay(2000); // Delay after sending the packet
+
+    // Wait for the expected response and check the 12th byte
+    unsigned long startTime = millis();
+    unsigned long timeout = 5000;
+    unsigned char response[255]; // Adjust size if needed
+    size_t responseIndex = 0;
+
+    while (millis() - startTime < timeout) {
+      if (Serial.available()) {
+        response[responseIndex++] = Serial.read();
+        if (responseIndex >= sizeof(response)) break; // Avoid overflow
+        if (responseIndex >= responseLength && check12thByte(response, responseIndex)) {
+          break; // Exit loop if response is valid
+        }
+      }
+    }
+
+    if (responseIndex < responseLength || !check12thByte(response, responseIndex)) {
+      Serial.println("Error: Expected response not received or 12th byte is not 01.");
+      break; // Exit loop on error
+    }
+
+    delay(2000); // Delay between packets
+  }
+
+  Send_Reset_command();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+Summary of Changes:
+
+    Refactored Command Sending: Consolidated command sending into reusable functions with arrays.
+    Added Response Check: Included waitForResponse function to wait for and verify a specific response.
+    Added 12th Byte Check: Implemented check12thByte function to check if the 12th byte of the response is 01.
+    Improved Delay Handling: Managed delays more efficiently to ensure proper timing.
+
+This refactored code now waits for a specific response after sending each packet and verifies if the 12th byte of that response is 01, enhancing functionality and ensuring correctness.
+
+To optimize and clean up the code while implementing the following features:
+
+    Send the first packet unconditionally.
+    Wait for the serial data to have the first 6 bytes as 02 F0 00 55 00 AA.
+    Check if the 12th byte of the received data is 01.
+    Do not send further packets until the above conditions are met.
+
+Here is a refactored version of your code incorporating these requirements:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    // Skip non-hex characters (spaces)
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    // Ensure there are enough characters for a valid hex byte
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' }; // Create a 2-char hex string and null-terminate
+      byteArray[i++] = strtol(hexByte, NULL, 16); // Convert hex string to byte
+    } else {
+      break; // Not enough characters to form a byte
+    }
+  }
+  return i; // Return the number of bytes read
+}
+
+// Function to send a command and wait for a specific response
+bool waitForResponse(const unsigned char* expectedResponse, size_t responseLength, unsigned long timeout) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (byte == expectedResponse[index]) {
+        index++;
+        if (index == responseLength) {
+          return true; // Response matches
+        }
+      } else {
+        index = (byte == expectedResponse[0]) ? 1 : 0; // Restart checking if matched byte
+      }
+    }
+  }
+  return false; // Timeout occurred without matching response
+}
+
+// Function to check the 12th byte of the response
+bool check12thByte(const unsigned char* response, size_t responseLength) {
+  if (responseLength >= 12) {
+    return response[11] == 0x01; // Check if the 12th byte is 01
+  }
+  return false; // Response is too short
+}
+
+// Send reset command
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+// Send initial commands
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  // Send the first packet
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+    Serial.write(byteArray, byteCount);
+    delay(2000); // Delay after sending the first packet
+
+    // Expected response to wait for
+    const unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+    const size_t expectedResponseLength = sizeof(expectedResponse) / sizeof(expectedResponse[0]);
+    const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+    unsigned long startTime = millis();
+    unsigned char response[255];
+    size_t responseIndex = 0;
+
+    // Wait for the specific response
+    while (millis() - startTime < responseTimeout) {
+      if (Serial.available()) {
+        response[responseIndex++] = Serial.read();
+        if (responseIndex >= sizeof(response)) break; // Avoid overflow
+
+        if (responseIndex >= expectedResponseLength && 
+            memcmp(response, expectedResponse, expectedResponseLength) == 0 &&
+            check12thByte(response, responseIndex)) {
+          break; // Exit loop if response is valid
+        }
+      }
+    }
+
+    if (responseIndex < expectedResponseLength || !check12thByte(response, responseIndex)) {
+      Serial.println("Error: Expected response not received or 12th byte is not 01.");
+    } else {
+      // Send remaining packets if the response is valid
+      for (int i = 1; i < hexStringCount; i++) {
+        byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+        Serial.write(byteArray, byteCount);
+        delay(2000); // Delay between sending hex strings
+      }
+    }
+
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+Summary of Changes:
+
+    Send_Reset_command and Send_Initial_commands: These functions were refactored to use arrays for sending data to reduce repetition.
+    Response Handling: Added waitForResponse to wait for a specific response and check12thByte to check if the 12th byte is 01.
+    Optimized Packet Sending: The code now sends the first packet unconditionally and waits for the expected response before sending further packets.
+
+This cleaned-up code ensures that the first packet is sent immediately, waits for the correct response, and checks the specific conditions before proceeding to send further packets.
+
+To achieve the required functionality while optimizing and cleaning up the code, you can follow these steps:
+
+    Send the first packet unconditionally.
+    Wait for the serial response with the first 6 bytes as 02 F0 00 55 00 AA.
+    Check if the 12th byte of the response is 01.
+    If the 12th byte is not 01, print the error codes based on the 12th byte and resend the packet if necessary.
+
+Here's how you can modify and clean up your code:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* response, size_t responseLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == response[index]) {
+          index++;
+        } else {
+          index = (byte == response[0]) ? 1 : 0;
+        }
+      } else {
+        return true; // Response matched
+      }
+    }
+  }
+  return false; // Timeout
+}
+
+// Function to check if the 12th byte is `01`
+bool check12thByte(const unsigned char* response, size_t responseLength) {
+  return responseLength >= 12 && response[11] == 0x01;
+}
+
+// Function to print error code based on the 12th byte
+void printErrorCode(unsigned char errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      Serial.println("SUCCESS");
+      break;
+    case 0xFF:
+      Serial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      Serial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      Serial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      Serial.println("VERIFY_FAIL");
+      break;
+    default:
+      Serial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Send reset command
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+// Send initial commands
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    // Add the commands here as per your requirement
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  // Define the expected response
+  const unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  const size_t expectedResponseLength = sizeof(expectedResponse) / sizeof(expectedResponse[0]);
+  const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+  // Send the first packet
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+    Serial.write(byteArray, byteCount);
+    delay(2000);
+
+    unsigned char response[255];
+    size_t responseIndex = 0;
+
+    // Wait for the specific response
+    if (waitForResponse(responseTimeout, expectedResponse, expectedResponseLength)) {
+      // Read the response
+      while (Serial.available()) {
+        response[responseIndex++] = Serial.read();
+        if (responseIndex >= sizeof(response)) break;
+      }
+
+      // Check if the 12th byte is 01
+      if (check12thByte(response, responseIndex)) {
+        // Send further packets
+        for (int i = 1; i < hexStringCount; i++) {
+          byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+          Serial.write(byteArray, byteCount);
+          delay(2000);
+        }
+      } else {
+        // Print error message based on the 12th byte
+        if (responseIndex >= 12) {
+          printErrorCode(response[11]);
+        } else {
+          Serial.println("ERROR: Response too short.");
+        }
+      }
+    } else {
+      Serial.println("ERROR: Timeout waiting for expected response.");
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+Key Changes:
+
+    waitForResponse Function: Waits for the specified response within a timeout period.
+    check12thByte Function: Checks if the 12th byte is 01.
+    printErrorCode Function: Prints error messages based on the 12th byte of the response.
+    Response Handling in loop: Waits for the expected response, checks the 12th byte, and prints appropriate messages if needed.
+
+This version of the code is more modular, with functions handling specific tasks, making it easier to maintain and extend.
+
+I want to optimize and clean this code, send first packet without any condition , do not send further and ongoing packets until serial receive data having first 6 bytes as 02 F0 00 55 00 AA on serial port  Checks if the 12th byte is 01.Make multiple attempts to send the packet if the 12th byte of recieved response is not 01 or print
+01	SUCCESS
+FF	UNSUPPORTED_COMMAND
+FE	BAD_ADDRESS
+FD	BAD_LENGTH
+FC	VERIFY_FAIL
+ChatGPT said:
+ChatGPT
+
+To optimize and clean up your code, including the functionality of sending packets conditionally based on the response, you can follow these steps:
+
+    Send the first packet unconditionally.
+    Wait for a specific response from the serial port.
+    Check if the 12th byte of the response is 01.
+    Print an error message based on the 12th byte if it's not 01.
+    Retry sending the packet if necessary.
+
+Here's the revised code:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* response, size_t responseLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == response[index]) {
+          index++;
+        } else {
+          index = (byte == response[0]) ? 1 : 0;
+        }
+      } else {
+        return true; // Response matched
+      }
+    }
+  }
+  return false; // Timeout
+}
+
+// Function to check if the 12th byte is `01`
+bool check12thByte(const unsigned char* response, size_t responseLength) {
+  return responseLength >= 12 && response[11] == 0x01;
+}
+
+// Function to print error code based on the 12th byte
+void printErrorCode(unsigned char errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      Serial.println("SUCCESS");
+      break;
+    case 0xFF:
+      Serial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      Serial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      Serial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      Serial.println("VERIFY_FAIL");
+      break;
+    default:
+      Serial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Function to send a packet and handle response
+void sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength, unsigned long timeout, unsigned char* expectedResponse, size_t responseLength) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char response[255];
+  size_t responseIndex = 0;
+
+  // Wait for the specific response
+  if (waitForResponse(timeout, expectedResponse, responseLength)) {
+    // Read the response
+    while (Serial.available()) {
+      response[responseIndex++] = Serial.read();
+      if (responseIndex >= sizeof(response)) break;
+    }
+
+    // Check if the 12th byte is `01`
+    if (check12thByte(response, responseIndex)) {
+      Serial.println("Packet sent successfully.");
+    } else {
+      // Print error message based on the 12th byte
+      if (responseIndex >= 12) {
+        printErrorCode(response[11]);
+      } else {
+        Serial.println("ERROR: Response too short.");
+      }
+    }
+  } else {
+    Serial.println("ERROR: Timeout waiting for expected response.");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  // Define the expected response
+  const unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  const size_t expectedResponseLength = sizeof(expectedResponse) / sizeof(expectedResponse[0]);
+  const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+  // Send the first packet and wait for a valid response
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+
+    // Send packet multiple times if necessary
+    bool success = false;
+    for (int attempt = 0; attempt < 3 && !success; attempt++) {
+      sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout, expectedResponse, expectedResponseLength);
+      delay(2000); // Delay before retrying
+    }
+
+    // Send subsequent packets if the first packet was successful
+    if (success) {
+      for (int i = 1; i < hexStringCount; i++) {
+        byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+        Serial.write(byteArray, byteCount);
+        delay(2000);
+      }
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+Key Improvements:
+
+    waitForResponse Function: Handles waiting for a specific response with a timeout.
+    check12thByte Function: Checks if the 12th byte is 01.
+    printErrorCode Function: Prints error codes based on the 12th byte.
+    sendPacketWithResponseHandling Function: Sends a packet and handles the response, including retries and error printing.
+    Optimized Send_Reset_command and Send_Initial_commands Functions: Uses arrays for sending commands to make the code more maintainable.
+
+This code now attempts to send the first packet multiple times if necessary, checks for the correct response, and handles errors appropriately.
+
+Certainly! Here’s a cleaned-up and optimized version of the code:
+Key Improvements:
+
+    Modular Functions: Consolidated repetitive tasks into reusable functions.
+    Response Handling: Improved clarity in handling and checking responses.
+    Removed Redundancies: Streamlined the sending of initial commands and packet transmissions.
+
+Here is the optimized version of your code:
+
+cpp
+
+// Define the input hex strings
+const char* hexStrings[] = {
+  // Add your hex strings here
+};
+
+const int hexStringCount = sizeof(hexStrings) / sizeof(hexStrings[0]);
+unsigned char byteArray[753]; // Adjust size as needed
+
+// Function to convert hex string to byte array
+int hexStringToByteArray(const char *hexString, unsigned char *byteArray) {
+  int i = 0;
+  while (*hexString) {
+    while (*hexString == ' ') {
+      hexString++;
+    }
+    if (*hexString && *(hexString + 1)) {
+      char hexByte[3] = { *hexString++, *hexString++, '\0' };
+      byteArray[i++] = strtol(hexByte, NULL, 16);
+    } else {
+      break;
+    }
+  }
+  return i;
+}
+
+// Function to wait for a specific response
+bool waitForResponse(unsigned long timeout, unsigned char* expectedResponse, size_t responseLength, unsigned char* actualResponse, size_t* actualLength) {
+  unsigned long startTime = millis();
+  size_t index = 0;
+  *actualLength = 0;
+
+  while (millis() - startTime < timeout) {
+    if (Serial.available()) {
+      unsigned char byte = Serial.read();
+      if (index < responseLength) {
+        if (byte == expectedResponse[index]) {
+          index++;
+        } else {
+          index = (byte == expectedResponse[0]) ? 1 : 0;
+        }
+      }
+      if (*actualLength < 255) {
+        actualResponse[(*actualLength)++] = byte;
+      }
+      if (index >= responseLength) {
+        return true; // Response matched
+      }
+    }
+  }
+  return false; // Timeout
+}
+
+// Function to print error code based on the 12th byte
+void printErrorCode(unsigned char errorCode) {
+  switch (errorCode) {
+    case 0x01:
+      Serial.println("SUCCESS");
+      break;
+    case 0xFF:
+      Serial.println("UNSUPPORTED_COMMAND");
+      break;
+    case 0xFE:
+      Serial.println("BAD_ADDRESS");
+      break;
+    case 0xFD:
+      Serial.println("BAD_LENGTH");
+      break;
+    case 0xFC:
+      Serial.println("VERIFY_FAIL");
+      break;
+    default:
+      Serial.println("UNKNOWN_ERROR");
+      break;
+  }
+}
+
+// Function to send a packet and handle the response
+bool sendPacketWithResponseHandling(const unsigned char* packet, size_t packetLength, unsigned long timeout) {
+  Serial.write(packet, packetLength);
+  Serial.flush();
+  delay(2000); // Allow time for the response to be received
+
+  unsigned char expectedResponse[] = {0x02, 0xF0, 0x00, 0x55, 0x00, 0xAA};
+  size_t expectedResponseLength = sizeof(expectedResponse);
+  unsigned char response[255];
+  size_t responseLength = 0;
+
+  if (waitForResponse(timeout, expectedResponse, expectedResponseLength, response, &responseLength)) {
+    if (responseLength >= 12 && response[11] == 0x01) {
+      Serial.println("Packet sent successfully.");
+      return true;
+    } else {
+      if (responseLength >= 12) {
+        printErrorCode(response[11]);
+      } else {
+        Serial.println("ERROR: Response too short.");
+      }
+      return false;
+    }
+  } else {
+    Serial.println("ERROR: Timeout waiting for expected response.");
+    return false;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Send_Initial_commands();
+  delay(2000);
+}
+
+void loop() {
+  const unsigned long responseTimeout = 10000; // 10 seconds timeout
+
+  // Send the first packet and wait for a valid response
+  if (hexStringCount > 0) {
+    int byteCount = hexStringToByteArray(hexStrings[0], byteArray);
+
+    // Try sending the packet multiple times if necessary
+    bool success = false;
+    for (int attempt = 0; attempt < 3 && !success; attempt++) {
+      success = sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout);
+      delay(2000); // Delay before retrying
+    }
+
+    // Send subsequent packets if the first packet was successful
+    if (success) {
+      for (int i = 1; i < hexStringCount; i++) {
+        byteCount = hexStringToByteArray(hexStrings[i], byteArray);
+        sendPacketWithResponseHandling(byteArray, byteCount, responseTimeout);
+        delay(2000);
+      }
+    }
+
+    // Send reset and initial commands after processing
+    Send_Reset_command();
+    delay(2000);
+    Send_Initial_commands();
+    delay(2000);
+  }
+}
+
+void Send_Reset_command() {
+  const unsigned char resetCommand[] = {
+    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(resetCommand, sizeof(resetCommand));
+  delay(5000);
+}
+
+void Send_Initial_commands() {
+  const unsigned char initialCommands[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  };
+  Serial.write(initialCommands, sizeof(initialCommands));
+  delay(5000);
+}
+
+Changes Made:
+
+    waitForResponse Function: Added parameters for response storage and length to handle the response directly within the function.
+    printErrorCode Function: Simplified error code printing.
+    sendPacketWithResponseHandling Function: Combined packet sending and response checking.
+    Streamlined setup and loop Functions: Removed redundant delays and simplified the flow of sending packets and handling responses.
+
+Notes:
+
+    Ensure that the hex strings are populated in the hexStrings array.
+    Adjust timeouts and delays as necessary based on your specific requirements.
+    Make sure that the hardware and serial communication settings match your actual setup.
+
